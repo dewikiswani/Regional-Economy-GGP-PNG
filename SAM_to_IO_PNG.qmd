@@ -1,0 +1,226 @@
+---
+title: "Extracting I-O Table from SAM Data"
+format: html
+editor: visual
+---
+
+## Reading SAM
+
+Fungsi yang digunakan dalam mengkonversi tabel SAM menjadi I-O terbagi dalam 4 section utama.
+
+### 1 Pembacaan dan Persiapan Data
+
+Ada tiga hal utama yang dilakukan pada Section 1:
+
+1.  Standardisasi Dimensi: Tabel SAM standar IFPRI menyajikan baris dengan label teks deskriptif (misal: "Activities - Maize"), sedangkan kolom menggunakan kode singkatan (misal: "amaiz").
+
+2.  Agar seluruh operasi baris dan kolom konsisten, nama baris dan kolom diseragamkan menggunakan vektor dari kolom Code. Baris dan kolom agregasi (total) serta kolom metadata Code dikeluarkan dari struktur data sebelum operasi aljabar dilakukan.
+
+3.  Tanda pemisah ribuan koma (,) dihilangkan dan sel kosong (NA) diubah menjadi 0 agar data yang dihasilkan berupa numerik murni.
+
+4.  Data awal hasil bacaan di tahap ini disimpan dengan nama variabel **sam_mat** dan **sam_data**
+
+```{r}
+library(writexl)
+library(DT)
+
+file_path <- "IFPRI_SAM_PNG_2019_SAM.csv" 
+output_excel_path <- "PNG_2019_IO_Analysis.xlsx"
+
+# Read CSV
+sam_raw <- read.csv(file_path, row.names = 1, check.names = FALSE)
+
+# Extract and clean account codes
+account_codes <- trimws(as.character(sam_raw$Code))
+
+# Remove 'Code' column and 'Total' row/column
+sam_data <- sam_raw[, colnames(sam_raw) != "Code"]
+valid_rows <- !tolower(rownames(sam_data)) %in% c("total")
+valid_cols <- !tolower(colnames(sam_data)) %in% c("total")
+
+sam_data <- sam_data[valid_rows, valid_cols]
+account_codes <- account_codes[valid_rows]
+
+# Convert numeric values (handling commas if present)
+sam_mat <- as.matrix(sam_data)
+sam_mat <- apply(sam_mat, 2, function(x) as.numeric(gsub(",", "", x)))
+sam_mat[is.na(sam_mat)] <- 0
+
+rownames(sam_mat) <- account_codes
+colnames(sam_mat) <- account_codes
+
+datatable(
+  sam_data,
+  options = list(
+    scrollX = TRUE,
+    scrollY = '400px', # Enables horizontal scrolling for wide tables
+    pageLength = 10,        # Controls rows per page
+    autoWidth = TRUE,
+    dom = 'ftip'            # Controls UI layout (Filter, Table, Info, Pagination)
+  ),
+  filter = 'top',           # Adds column-wise filter boxes
+  rownames = TRUE,
+  class = 'cell-border stripe hover',
+  caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: center; color: black; font-size: 20px; font-weight: bold;',
+    'My Styled Data Table Title')
+)
+
+```
+
+### 2 Standarisasi Data
+
+IFPRI SAM mengikuti konvensi penamaan standar ([Mainar-Causapé, A. J., Ferrari, E., & McDonald, S. (2018). Social Accounting Matrices: Basic Features and Creation. JRC Technical Reports, European Commission.](https://www.researchgate.net/publication/328389472_Social_Accounting_Matrices_basic_aspects_and_main_steps_for_estimation "SAM Basic Literature")):
+
+- a... (Activities): Sektor kegiatan produksi domestik (misal: amaiz, amine, acons).
+
+- c... (Commodities): Pasar barang dan jasa (misal: cmaiz, cmine, ccons).
+
+- f... (Factors): Faktor-faktor produksi primer (tenaga kerja berdasarkan tingkat pendidikan flab-\*, tanah pertanian flnd, dan kapital fcap). Akun pajak faktor (ftax) dikecualikan dari blok nilai tambah primer.
+
+- hhd... (Households): Rumah tangga institusi konsumsi berdasarkan desil/kuintil pendapatan pedesaan dan perkotaan.
+
+- gov, s-i/dstk, row: Institusi pemerintah, pembentukan modal bruto/perubahan stok investasi, dan akun luar negeri (Rest of the World).
+
+Pencocokan awalan huruf (startsWith) dibangun agar perubahan jumlah akun di tahun rilis SAM yang berbeda (seperti perbedaan antara SAM 2019 dan 2023).
+
+```{r}
+# Dynamic Account Identification by Code Prefix / Pattern ---
+act_codes <- account_codes[startsWith(account_codes, "a")]
+com_codes <- account_codes[startsWith(account_codes, "c")]
+fac_codes <- account_codes[startsWith(account_codes, "f") & account_codes != "ftax"]
+hhd_codes <- account_codes[startsWith(account_codes, "hhd")]
+gov_code  <- account_codes[account_codes == "gov"]
+inv_codes <- account_codes[account_codes %in% c("s-i", "dstk")]
+row_code  <- account_codes[account_codes == "row"]
+
+```
+
+###3 Ekstraksi Matriks Use, Make, dan Komoditas Impor Murni
+
+- Matriks Use (U): Mengukur transaksi input antara, yaitu nilai komoditas c yang diserap sebagai bahan baku perantara oleh aktivitas produksi
+
+- Matriks Make (V): Menyajikan pasokan domestik, yaitu output komoditas $c$ yang diproduksi oleh aktivitas $a$. Dalam format SAM, blok baris aktivitas $\times$ kolom komoditas merupakan transpos matriks Make ($V^T$).
+
+- Penanganan Pure Import: Komoditas yang tidak diproduksi di dalam negeri (misalnya tembakau murni impor ctoba pada SAM 2019) memiliki nilai produksi domestik nol ($q_c = 0$). Karena pembagian dengan nol akan membuat matriks tidak dapat diinversikan (singular matrix), komoditas non-domestik tersebut diisolasi sehingga menghasilkan matriks persegi $m \times m$ yang konsisten ([Eurostat, 2008; UN, 2018](https://ec.europa.eu/eurostat/web/products-manuals-and-guidelines/-/ks-ra-07-013 "Import Pure")).
+
+Vektor Output Bruto:$g$: Total input/outlay aktivitas produksi (penjumlahan seluruh kolom aktivitas).$q$: Total output produksi komoditas domestik (penjumlahan kolom matriks Make domestik).
+
+```{r}
+# Extract Use and Make Matrices
+U <- sam_mat[com_codes, act_codes]           # Commodities x Activities
+V_trans <- sam_mat[act_codes, com_codes]     # Activities x Commodities
+
+# Filter commodities produced domestically (colSums > 0 in Make matrix)
+dom_com_idx   <- which(colSums(V_trans) > 0)
+dom_com_codes <- colnames(V_trans)[dom_com_idx]
+
+# Form square production matrices
+V_dom <- V_trans[, dom_com_codes]
+U_dom <- U[dom_com_codes, act_codes]
+
+# Outlays: g (Activity input total) and q (Commodity domestic output)
+g <- colSums(sam_mat[, act_codes])
+q <- colSums(V_dom)
+```
+
+### 4 Membangun Matriks Leontief
+
+Asumsi Teknologi Komoditas (CTA) menyatakan bahwa setiap komoditas diproduksi dengan struktur input teknologi yang seragam dan unik, terlepas dari aktivitas industri mana yang memproduksinya (ten Raa et al., 1984; Miller & Blair, 2009). Hubungan matematisnya diturunkan sebagai berikut:
+
+- Matriks Koefisien Input Aktivitas ($B$):$$B = U \hat{g}^{-1}, \quad \text{dengan } b_{ca} = \frac{u_{ca}}{g_a}$$di mana $b_{ca}$ adalah kebutuhan input komoditas $c$ per unit output aktivitas $a$.
+
+- Matriks Pangsa Struktur Produk ($C$ / Product-Mix Matrix):$$C = V^T \hat{q}^{-1}, \quad \text{dengan } c_{ca} = \frac{v_{ac}}{q_c}$$di mana $c_{ca}$ menunjukkan proporsi komoditas $c$ yang dihasilkan oleh aktivitas $a$. Penurunan Koefisien Teknologi Komoditas ($A_c$):
+
+- Berdasarkan CTA, berlaku hubungan aljabar $B = A_c C$. Dengan menginversikan matriks $C$:$$A_c = B C^{-1} = \left(U \hat{g}^{-1}\right) \left(V^T \hat{q}^{-1}\right)^{-1}$$Matriks $A_c$ ($n \times n$) adalah matriks koefisien teknis simetris Komoditas $\times$ Komoditas.
+
+- $L_c = (I - A_c)^{-1}$: Matriks pengganda Leontief (total requirements matrix).Elemen $l_{ij}$ menunjukkan total pertambahan output komoditas $i$ (baik dampak langsung maupun dampak tidak langsung) yang dipicu oleh peningkatan 1 unit permintaan akhir (final demand) pada komoditas $j$.
+
+```{r}
+# --- CTA Transformation ---
+# B = U * diag(1/g)
+B <- U_dom %*% diag(1 / g)
+colnames(B) <- dom_com_codes
+rownames(B) <- dom_com_codes
+
+# C = t(V) * diag(1/q)
+C <- t(V_dom) %*% diag(1 / q)
+colnames(C) <- dom_com_codes
+rownames(C) <- dom_com_codes
+
+# Commodity-by-Commodity Technical Coefficients: A_c = B %*% C^-1
+C_inv <- solve(C)
+A_c   <- B %*% C_inv
+rownames(A_c) <- dom_com_codes
+colnames(A_c) <- dom_com_codes
+
+# Leontief Inverse: L_c = (I - A_c)^-1
+I_mat <- diag(nrow(A_c))
+L_c   <- solve(I_mat - A_c)
+rownames(L_c) <- dom_com_codes
+colnames(L_c) <- dom_com_codes
+```
+
+### 5 Konstruksi Tabel I-O
+
+- Matriks Transaksi Antar-Komoditas ($Z_c$): Dihitung kembali dari matriks koefisien dengan mengalikan vektor output komoditas: $Z_c = A_c \hat{q}$.
+
+- Transformasi Nilai Tambah ($VA_c$): Nilai tambah primer yang awalnya dicatat per aktivitas produksi ditransformasikan ke basis komoditas menggunakan operator teknologi yang sama: $VA_c = VA_{\text{act}} C^{-1}$.
+
+- Blok Permintaan Akhir ($Y$): Mengagregasikan konsumsi rumah tangga ($HHD$), belanja pemerintah ($GOV$), pembentukan modal bruto/investasi ($INV$), serta ekspor neto ($EXP$).
+
+- Verifikasi Keseimbangan Akuntansi (Row-Column Balancing): Memastikan bahwa pada setiap komoditas berlaku kaidah fundamental tabel I-O
+
+```{r}
+# --- Build Full Symmetrical I-O Table ---
+  # Symmetric Intermediate Transactions (Z = A_c * diag(q))
+  Z_c <- A_c %*% diag(q)
+  rownames(Z_c) <- dom_com_codes
+  colnames(Z_c) <- dom_com_codes
+  
+  # Transformed Value Added (Factors x Commodities)
+  VA_act <- sam_mat[fac_codes, act_codes]
+  VA_c   <- VA_act %*% C_inv
+  rownames(VA_c) <- fac_codes
+  colnames(VA_c) <- dom_com_codes
+  
+  # Final Demand Blocks
+  FD_hhd <- rowSums(sam_mat[dom_com_codes, hhd_codes, drop = FALSE])
+  FD_gov <- sam_mat[dom_com_codes, gov_code]
+  FD_inv <- rowSums(sam_mat[dom_com_codes, inv_codes, drop = FALSE])
+  FD_exp <- sam_mat[dom_com_codes, row_code]
+  
+  Final_Demand <- cbind(
+    Households = FD_hhd,
+    Government = FD_gov,
+    Investment = FD_inv,
+    Exports    = FD_exp
+  )
+  
+  Total_Gross_Output <- rowSums(Z_c) + rowSums(Final_Demand)
+  Total_Gross_Input  <- colSums(Z_c) + colSums(VA_c)
+  
+  top_block    <- cbind(Z_c, Final_Demand, Total_Output = Total_Gross_Output)
+  bottom_block <- cbind(VA_c, matrix(0, nrow = nrow(VA_c), ncol = ncol(Final_Demand) + 1))
+  colnames(bottom_block) <- colnames(top_block)
+  
+  io_table <- rbind(top_block, bottom_block)
+  io_table <- rbind(io_table, Total_Input = c(Total_Gross_Input, rep(NA, ncol(Final_Demand) + 1)))
+```
+
+### 6 Export to Excel
+
+```{r}
+# --- Export to Excel if path is provided ---
+  if (!is.null(output_excel_path)) {
+    sheets <- list(
+      "IO_Table"           = data.frame(Account = rownames(io_table), round(io_table, 4), check.names = FALSE),
+      "Technical_Coeffs_A" = data.frame(Sector = rownames(A_c), round(A_c, 6), check.names = FALSE),
+      "Leontief_Inverse_L" = data.frame(Sector = rownames(L_c), round(L_c, 6), check.names = FALSE)
+    )
+    write_xlsx(sheets, path = output_excel_path)
+    cat("Successfully exported to:", output_excel_path, "\n")
+  }
+```
+
+
