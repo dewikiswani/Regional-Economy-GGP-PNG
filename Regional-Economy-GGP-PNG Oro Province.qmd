@@ -1,0 +1,856 @@
+---
+title: "Regional Economy - GGP PNG Oro"
+format: html
+editor: visual
+---
+
+
+## Regional Economy Simulation
+
+
+
+## Data Input and Reading
+
+Terdapat 4 file data input berformat xlsx yang digunakan, yaitu:
+
+```{r tabel-rapi, echo=FALSE, message=FALSE, warning=FALSE}
+library(knitr)
+# if (!requireNamespace("kableExtra", quietly = TRUE)) {
+#   install.packages("kableExtra")
+# }
+if (!requireNamespace("kableExtra", quietly = TRUE)) {
+  install.packages("kableExtra", repos = "https://cloud.r-project.org/")
+}
+library(kableExtra)
+
+# Membuat data frame
+df <- data.frame(
+  No = 1:4,
+  `Keterangan Data Input` = c(
+    "Tabel Input-Output BUKECAP tahun 2025",
+    "Data deskripsi sektor yang berisi:<br>• Nama pendek sektor<br>• Nama singkat sektor<br>• Kategori KSM<br>• Label constrained sector<br>• Label unconstrained sector<br>• Rataan pertumbuhan PDRB ADHK (yoy) setiap sector unconstrained<br>• Jumlah tenaga kerja setiap sektor di tahun 2025",
+    "Data Land Distribution Coefficient BAU", 
+    "Data luasan lahan (dalam hektare) berdasarkan tipe land cover historis dan proyeksi menggunakan asumsi skenario BAU"
+  ),
+  `Nama Variabel R` = c("<code>IO BUKECAP</code>", 
+                       "<code>DeskripsiSektor</code>", 
+                       "<code>LDM</code>", 
+                       "<code>BAU_Lahan</code>"),
+  `Nama File XLSX` = c("io", 
+                        "DeskripsiSektor", 
+                        "LDC", 
+                        "BAU_Lahan"),
+  check.names = FALSE
+)
+
+kable(df, format = "html", escape = FALSE, align = c("c", "l", "l", "l")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+  column_spec(1, width = "2%") %>%    # Sangat sempit
+  column_spec(2, width = "58%") %>%
+  column_spec(3, width = "20%") %>%
+  column_spec(4, width = "20%")
+```
+
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readxl)
+library(DT)
+library(patchwork)
+library(writexl)
+library(plotly)
+library(scales) # Untuk format koma angka
+if (!requireNamespace("ggrepel", quietly = TRUE)) {
+  install.packages("ggrepel", repos = "https://cloud.r-project.org/")
+}
+library(ggrepel)
+
+
+# Data Ekonomi Provinsi
+# Baca Matriks Transaksi Inter-Industri Provinsi (Z_prov) 
+io <- read.csv("io png oro.csv", 
+               header=T,
+               sep=",",
+               stringsAsFactors = F)
+
+# 1. Baca data deskrpsi sektor
+DeskripsiSektor <- read_excel("DeskripsiSektor.xlsx", 
+                                sheet = "DeskripsiSektor", 
+                                col_names = TRUE)
+
+# LDC menghubungkan 66 sektor dengan jenis tutupan lahan (land cover)
+LDM <- read_excel("LDC.xlsx",
+                     sheet = "LDC", col_names = TRUE)
+
+# Baca Data Luas Lahan per 5 Tahun (BAU_Lahan.xlsx)
+BAULahan <- read_excel("BAU_Lahan.xlsx",
+                        sheet = "BAU_Lahan", col_names = TRUE)
+
+
+# LASLahan <- read_excel("LAS_Lahan.xlsx",
+#                                sheet = "LAS_Lahan",
+#                                col_names = TRUE)
+# 
+# SType1 <- read_excel("SType1.xlsx",
+#                                sheet = "SType1",
+#                                col_names = TRUE)
+# SType2 <- read_excel("SType2.xlsx",
+#                                sheet = "SType2",
+#                                col_names = TRUE)
+# SType3 <- read_excel("SType3.xlsx",
+#                                sheet = "SType3",
+#                                col_names = TRUE)
+# 
+# populasiPenduduk <- read_excel("populasi penduduk.xlsx", col_names = TRUE)
+# 
+# populasiPendudukPesisir <- read_excel("populasi penduduk pesisir.xlsx", col_names = TRUE)
+# 
+# pdrb_decay <- read.csv2("Bukecap_ADHK_PDRB_TimeSeries.csv", dec = ",", check.names = FALSE)
+ 
+# Penyesuaian nama Input kolom yang dibutuhkan
+jml_sektor <- 41
+n_tahunSimulasi <- 27
+tahunAwal <- 2023
+tahunAkhir <- 2050
+kolom_Sektor <- paste0("X", 1:41) # Membuat daftar nama kolom x1, x2, ..., x66 secara otomatis
+namaSektor <- as.vector(io[1:jml_sektor,"Nama.Sektor"])
+kolom_FD <- paste0("X309") # houshold: import dijumlahkan 
+kolom_TOutput <- "X700"
+
+baris_impor <- 52  # Baris Impor / Input Luar Daerah (ambil kolom import dan di trasnpose lalu di kalikan positf )
+baris_upah  <- 52  # Baris Kompensasi Tenaga Kerja / Gaji & Upah (42:44)
+baris_surplus <- 53 # baris surplus usaha bruto (oro: 45 dan 46)
+baris_totInputPrimer <- 54 # oro:42:49
+baris_totInput <- 50
+# propLuasPesisir <- 0.144
+
+```
+
+
+```{r, echo = FALSE, warning=FALSE}
+# pembacaan matrix A
+matrixA <- io %>%
+  slice(1:jml_sektor) %>%       # Mengambil baris 1 hingga 66
+  select(all_of(kolom_Sektor))   # Mengambil rentang kolom dari x1 sampai x66
+
+Z_prov <- data.matrix(matrixA)
+
+# Total Output Sektor di Provinsi (X_prov)
+X_prov <- as.numeric(io[baris_totInput,kolom_Sektor])
+X_prov[is.nan(X_prov)] <- 0 #jika Nan diganti 0 
+
+# Matriks Koefisien Teknis Provinsi (A_prov = Z_prov / X_prov)
+A_prov <- sweep(Z_prov, 2, X_prov, FUN = "/")
+A_prov[is.nan(A_prov)] <- 0 #jika Nan diganti 0 
+
+# Menciptakan matriks identitas (I) berukuran n x n
+nA_prov <- nrow(A_prov)
+matrixI <- diag(nA_prov)
+
+# Menghitung (I - A) dan mencari Invers Leontief: (I - A)^(-1)
+I_minus_A <- matrixI - A_prov
+Leontief_Inverse <- solve(I_minus_A)
+
+#kolom final demand
+fd <- io[1:jml_sektor,kolom_FD]
+
+
+#Perkalian Matriks: (I - A)^-1 %*% FD
+# Menggunakan operator %*% untuk perkalian aljabar linier (bukan * biasa)
+matrix_X <- Leontief_Inverse %*% fd
+
+#validasi total_output_baru (matrix X) = total_output io
+total_output_io <- io[1:jml_sektor,kolom_TOutput]
+validasi_output <- matrix_X/total_output_io*100
+
+# proposi fd terhadap output
+fdProp <- fd/total_output_io
+fdProp[is.nan(fdProp) | is.infinite(fdProp)] <- 0
+
+#validasi Proporsi NTB/total input * (I - A)^-1 %*% FD = total input primer di IO
+totInputPrimer <- as.numeric(io[baris_totInputPrimer,kolom_Sektor])
+totInput <- as.numeric(io[baris_totInput,kolom_Sektor])
+ntbProp <- totInputPrimer/totInput
+ntbProp[is.nan(ntbProp) | is.infinite(ntbProp)] <- 0
+matrix_X <- as.numeric(matrix_X)
+kali_NTB <- as.numeric(matrix_X * ntbProp)
+validasi_NtbProp <- kali_NTB/totInputPrimer*100
+
+#validasi Proporsi NTB/total input * (I - A)^-1 %*% FD = pdrb di IO (NTB + pajak atas produk)
+totInputPrimer <- as.numeric(io[baris_totInputPrimer,kolom_Sektor])
+pdrb_IO <- totInputPrimer 
+
+#validasi (I - A)^-1 %*% FD %*% Proporsi NTB/total input *= pdrb di IO (NTB + pajak atas produk)
+validasi_PDRB_IO <- (kali_NTB/pdrb_IO*100)
+validasi_PDRB_IO[is.nan(validasi_PDRB_IO) | is.infinite(validasi_PDRB_IO)] <- 0
+
+# menghitung land requirement coeff (LRC) dan land productivity coeff (LPC)
+Lahan2025 <- BAULahan$"2025"
+Lahan2025_diag <- diag(Lahan2025)
+LDM_matrix <- as.matrix(LDM[,]) #tidak perlu menghilangkan kolom laut seperti bukecap
+storage.mode(LDM_matrix) <- "double"
+LR_matrix   <- LDM_matrix %*% Lahan2025_diag
+LR <- rowSums(LR_matrix, na.rm = TRUE)
+LRC <- LR/fd
+LPC <- 1/LRC
+
+# marker sektor Constrained dan Unconstrained
+Unconstrained <- as.matrix(DeskripsiSektor[, 6])
+Constrained <- as.matrix(DeskripsiSektor[, 5])
+```
+
+## Linkages analysis
+
+
+```{r, echo = FALSE, warning=FALSE}
+# ==============================================================================
+# MENGHITUNG Backward dan Forward Linkage
+# ==============================================================================
+# Direct Backward Linkage (DBL)  (Penjumlahan Kolom Matriks A)
+dbl <- colSums(A_prov)
+# Total Backward Linkage (TBL)  = Sum per Kolom pada Invers Leontief
+tbl <- colSums(Leontief_Inverse)
+# Indeks Total Backward Linkage (ITBL) / Indeks Daya Penyebaran Total (IDP)
+itbl <- tbl / mean(tbl)
+
+# Direct Forward Linkage (DFL)  (Penjumlahan Baris Matriks A)
+dfl <- rowSums(A_prov)
+# Total Forward Linkage (TFL)  = Sum per Baris pada Invers Leontief
+tfl <- rowSums(Leontief_Inverse)
+# Indeks Total Forward Linkage (ITFL) / Indeks Derajat Kepekaan Total (IDK)
+itfl <- tfl / mean(tfl)
+
+
+tabel_linkage <- data.frame(
+  id_Sektor = kolom_Sektor,
+  nama_Sektor  = namaSektor,
+  TBL = round(tbl, 4),
+  TFL = round(tfl, 4),
+  ITBL = round(itbl, 4),
+  ITFL = round(itfl, 4)
+)
+
+# ------------------------------------------------------------------------------
+# PENGELOMPOKAN KE DALAM 4 KUADRAN SEKTOR EKONOMI
+# ------------------------------------------------------------------------------
+# masih menerapkan nilai 1, belum tau landasan pemilihan benchmarknya
+
+tabel_kuadran <- tabel_linkage %>%
+  mutate(
+    Kuadran = case_when(
+      ITBL > 1 & ITFL > 1  ~ "K1 (BL Tinggi, FL Tinggi)",
+      ITBL > 1 & ITFL <= 1 ~ "K2 (BL Tinggi, FL Rendah)",
+      ITBL <= 1 & ITFL > 1 ~ "K3 (BL Rendah, FL Tinggi)",
+      TRUE               ~ "K4 (BL Rendah, FL Rendah)"
+    ),
+    Kategori = case_when(
+      ITBL > 1 & ITFL > 1  ~ "Sektor Kunci (Key Sector)",
+      ITBL > 1 & ITFL <= 1 ~ "Sektor Pendorong Hulu (Backward-Oriented)",
+      ITBL <= 1 & ITFL > 1 ~ "Sektor Pendukung Hilir (Forward-Oriented)",
+      TRUE               ~ "Sektor Lemah / Terisolasi (Weak Sector)"
+    )
+  )
+
+# Gabung informasi tabel kuadran dengan tabel input deskrpisi sektor
+tabel_kuadran <- tabel_kuadran %>%
+  left_join(DeskripsiSektor, by = c("nama_Sektor" = "NamaSektor")) # Sesuaikan nama kolom kunci
+
+# membuat format dttable
+df_tabel_kuadran <- datatable(tabel_kuadran)
+
+
+p_linkage <- ggplot(tabel_kuadran, aes(x = ITBL, y = ITFL, label = id_Sektor)) +
+  geom_point(aes(color = Kuadran), size = 3) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red") +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
+  # geom_text(vjust = -0.7, size = 2.5, check_overlap = TRUE) +
+  
+  labs(
+    title = "Diagram Kuadran Backward & Forward Linkage Sektor Ekonomi",
+    subtitle = "Garis Merah Putus-putus Menunjukkan Batas Indeks = 1.00",
+    x = "Indeks Total Backward Linkage (ITBL) / Indeks Daya Penyebaran (IDP)",
+    y = "Indeks Total Forward Linkage (ITFL) / Indeks Derajat Kepekaan (IDK)"
+  ) +
+  theme_minimal()
+
+p_linkage
+
+# 4. VISUALISASI DIAGRAM KUADRAN (MENGGUNAKAN LABELS = NamaPendek)
+p_linkagePendek <- ggplot(tabel_kuadran, aes(x = ITBL, y = ITFL, label = NamaPendek)) +
+  geom_point(aes(color = Kuadran), size = 3) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red") +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
+  
+  # Opsi A: Menggunakan geom_text_repel agar label otomatis tidak bertabrakan
+  geom_text_repel(size = 3, max.overlaps = 20, fontface = "bold") +
+  
+  # Opsi B: Menggunakan geom_text bawaan (uncomment jika tidak ingin pakai ggrepel)
+  # geom_text(vjust = -0.7, size = 2.5, check_overlap = TRUE) +
+  
+  labs(
+    title = "Diagram Kuadran Backward & Forward Linkage Sektor Ekonomi",
+    subtitle = "Garis Merah Putus-putus Menunjukkan Batas Indeks = 1.00",
+    x = "Indeks Total Backward Linkage (ITBL) / Indeks Daya Penyebaran (IDP)",
+    y = "Indeks Total Forward Linkage (ITFL) / Indeks Derajat Kepekaan (IDK)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "bottom"
+  )
+
+# Tampilkan Plot
+p_linkagePendek
+```
+
+## Multiplier Analysis
+
+```{r, echo = FALSE, warning=FALSE}
+# ==============================================================================
+# MENGHITUNG MULTIPLIERS (OUTPUT, INCOME, LABOUR, IMPORT)
+# TINGKAT SEKTORAL DAN RATA-RATA KSM (SEKTOR MAKRO)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# PERSIAPAN DATA KOEFISIEN INPUT PRIMER
+# ------------------------------------------------------------------------------
+# Catatan: Sesuaikan indeks baris pada file IO Anda jika berbeda.
+baris_upah  <- baris_upah  # Baris Kompensasi Tenaga Kerja / Gaji & Upah
+baris_impor <- baris_impor  # Baris Impor / Input Luar Daerah
+
+
+# A. Koefisien Pendapatan Langsung (h)
+upah_gaji <- as.numeric(io[baris_upah, kolom_Sektor])
+upah_gaji[is.na(upah_gaji)] <- 0
+h <- upah_gaji / X_prov
+h[is.nan(h) | is.infinite(h)] <- 0
+h_diag <- diag(h)
+
+# B. Koefisien Tenaga Kerja Langsung (w)
+tk_prov <- DeskripsiSektor[, "TenagaKerja"]
+tk_prov[is.na(tk_prov)] <- 0
+w <- tk_prov / X_prov
+w[is.na(w)] <- 0
+w_diag <- diag(unlist(w))
+w <- diag(w_diag)
+
+# C. Koefisien Impor Langsung (m)
+impor <- as.numeric(io[baris_impor, kolom_Sektor])
+impor[is.na(impor)] <- 0
+im <- impor / X_prov
+im[is.nan(im) | is.infinite(im)] <- 0
+im_diag <- diag(im)
+
+
+# ------------------------------------------------------------------------------
+# PERHITUNGAN MULTIPLIER & EFFECT LEVEL 66 SEKTOR (SEKTORAL)
+# ------------------------------------------------------------------------------
+
+# 1) Output Multiplier (Pengganda Output)
+output_mult <- colSums(Leontief_Inverse) # sama dengan TBL
+
+# 2) Income Multiplier & Effect (Pendapatan)
+income_effect <- h_diag %*% Leontief_Inverse
+
+# 3) Labour Multiplier & Effect (Tenaga Kerja)
+labour_effect <- w_diag %*% Leontief_Inverse
+
+# 4) Import Multiplier & Effect (Kebocoran Impor)
+import_effect <- im_diag %*% Leontief_Inverse
+
+# ------------------------------------------------------------------------------
+# PERHITUNGAN DAMPAK TOTAL (EFFECTS) & MULTIPLIER TIPE I
+# ------------------------------------------------------------------------------
+
+# A. Dampak Total (Total Effects per 1 unit Permintaan Akhir)
+tot_income_effect <- as.vector(colSums(h_diag %*% Leontief_Inverse))   # Total Income Effect (Rp/Rp)
+tot_labour_effect <- as.vector(colSums(w_diag %*% Leontief_Inverse))   # Total Labour Effect (Orang/Rp)
+tot_import_effect <- as.vector(colSums(im_diag %*% Leontief_Inverse))  # Total Import Effect (Kebocoran)
+
+# B. Multiplier Tipe I (Rasio Kelipatan terhadap Koefisien Langsung)
+type1_income_mult <- ifelse(h > 0, tot_income_effect / h, 0)
+type1_labour_mult <- ifelse(w > 0, tot_labour_effect / w, 0)
+type1_import_mult <- ifelse(im > 0, tot_import_effect / im, 0)
+
+# ------------------------------------------------------------------------------
+# PENGGABUNGAN KE TABEL KUADRAN SEKTORAL (66 SEKTOR MIKRO)
+# ------------------------------------------------------------------------------
+# Ekstraksi nama KSM dari Kolom D (Kolom ke-5) untuk 66 sektor
+ksm_sektor <- io[1:jml_sektor, 5] #kategori berdasarkan 17 sektor besar, jika pakai 2 digit sektor pakai kolom no 4
+
+# Menambahkan kolom KSM ke tabel_kuadran yang sudah Anda buat
+tabel_kuadran_sektoral <- tabel_kuadran %>%
+  mutate(KSM = ksm_sektor) %>%
+  select(nama_Sektor, KSM, TBL, TFL, ITBL, ITFL, Kuadran, Kategori)
+
+# Menggabungkan Hasil Multiplier Sektoral ke Tabel Kuadran Sektoral
+tabel_multiplier_sektoral <- tabel_kuadran_sektoral %>%
+  mutate(
+    # Koefisien Langsung (Input Primer per Unit Output)
+    Koef_Upah_h          = round(h, 6),
+    Koef_TK_w            = round(w, 6),
+    Koef_Impor_m         = round(im, 6),
+    
+    # Pengganda Output
+    Output_Multiplier    = round(output_mult, 4),
+    
+    # Dampak Total (Total Effects)
+    Income_Effect        = round(tot_income_effect, 4),
+    Labour_Effect        = round(tot_labour_effect, 4),
+    Import_Effect        = round(tot_import_effect, 4),
+    
+    # Multiplier Tipe I (Kelipatan)
+    Income_Multiplier_T1 = round(type1_income_mult, 4),
+    Labour_Multiplier_T1 = round(type1_labour_mult, 4),
+    Import_Multiplier_T1 = round(type1_import_mult, 4)
+  )
+
+# membuat format dttable
+df_tabel_multiplier_sektoral <- datatable(tabel_multiplier_sektoral)
+
+# A. Top 15 Income Effect
+top15_income <- tabel_multiplier_sektoral %>%
+  arrange(desc(Income_Effect)) %>%
+  slice(1:15)
+
+# B. Top 15 Labour Effect
+top15_labour <- tabel_multiplier_sektoral %>%
+  arrange(desc(Labour_Effect)) %>%
+  slice(1:15)
+
+# C. Top 15 Import Effect
+top15_import <- tabel_multiplier_sektoral %>%
+  arrange(desc(Import_Effect)) %>%
+  slice(1:15)
+
+# D. Top 15 Output Effect
+top15_output <- tabel_multiplier_sektoral %>%
+  arrange(desc(Output_Multiplier)) %>%
+  slice(1:15)
+
+# ------------------------------------------------------------------------------
+# PEMBUATAN PLOT MASING-MASING INDIKATOR
+# ------------------------------------------------------------------------------
+
+# Plot 1: Top 15 Income Effect
+p_income <- ggplot(top15_income, aes(x = reorder(nama_Sektor, Income_Effect), y = Income_Effect)) +
+  geom_col(fill = "#2e7d32", width = 0.75) +
+  geom_text(aes(label = round(Income_Effect, 4)), hjust = -0.15, size = 3) +
+  coord_flip() +
+  labs(
+    title = "Top 15 Sektor - Income Effect",
+    subtitle = "Dampak Pendapatan Rumah Tangga per Unit Permintaan Akhir",
+    x = NULL,
+    y = "Income Effect (Juta Rupiah/Juta Rupiah)"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, color = "#1b5e20"),
+    axis.text.y = element_text(size = 8.5)
+  )
+
+# Plot 2: Top 15 Labour Effect
+p_labour <- ggplot(top15_labour, aes(x = reorder(nama_Sektor, Labour_Effect), y = Labour_Effect)) +
+  geom_col(fill = "#1565c0", width = 0.75) +
+  geom_text(aes(label = round(Labour_Effect, 4)), hjust = -0.15, size = 3) +
+  coord_flip() +
+  labs(
+    title = "Top 15 Sektor - Labour Effect",
+    subtitle = "Penyerapan Tenaga Kerja per Unit Permintaan Akhir",
+    x = NULL,
+    y = "Labour Effect (Orang/Juta Rupiah)"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, color = "#0d47a1"),
+    axis.text.y = element_text(size = 8.5)
+  )
+
+# Plot 3: Top 15 Import Effect
+p_import <- ggplot(top15_import, aes(x = reorder(nama_Sektor, Import_Effect), y = Import_Effect)) +
+  geom_col(fill = "#c62828", width = 0.75) +
+  geom_text(aes(label = round(Import_Effect, 4)), hjust = -0.15, size = 3) +
+  coord_flip() +
+  labs(
+    title = "Top 15 Sektor - Import Effect (Kebocoran Ekonomi)",
+    subtitle = "Dampak Kebocoran Impor Input per Unit Permintaan Akhir",
+    x = NULL,
+    y = "Import Effect (Juta Rupiah/Juta Rupiah)"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, color = "#b71c1c"),
+    axis.text.y = element_text(size = 8.5)
+  )
+
+# Plot 4: Top 15 Output Multiplier
+p_output <- ggplot(top15_output, aes(x = reorder(nama_Sektor, Output_Multiplier), y = Output_Multiplier)) +
+  geom_col(fill = "orange", width = 0.75) +
+  geom_text(aes(label = round(Output_Multiplier, 4)), hjust = -0.15, size = 3) +
+  coord_flip() +
+  labs(
+    title = "Top 15 Sektor - Output Multiplier",
+    x = NULL,
+    y = "Output Effect (Juta Rupiah/Juta Rupiah)"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 12, color = "orange"),
+    axis.text.y = element_text(size = 8.5)
+  )
+
+p_output
+p_import
+p_labour
+p_income
+
+# ------------------------------------------------------------------------------
+# 3. GABUNGKAN DAN TAMPILKAN GRAFIK
+# ------------------------------------------------------------------------------
+
+# Penggabungan 3 Plot dalam 1 Tampilan Kolom (Atas-Tengah-Bawah)
+gabungan_plot <- p_income / p_labour / p_import / p_output +
+  plot_annotation(
+    title = "ANALISIS SEKTOR STRATEGIS REGIONAL (BUKECAP)",
+    subtitle = "Perbandingan 15 Sektor Tertinggi Berdasarkan Indikator Dampak Pengganda Ekonomi",
+    theme = theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5)
+    )
+  )
+
+
+```
+
+
+## Simulation BAU
+
+### Definisi
+
+Skenario ini merupakan proyeksi kondisi ekonomi dan lingkungan yang berjalan tanpa adanya intervensi kebijakan baru atau perubahan signifikan dalam tata kelola sumber daya hingga tahun 2045.
+
+### Asumsi
+
+Proyeksi perubahan penggunaan lahan dimodelkan dengan mengacu pada data historis tahun 2020 sampai tahun 2025. Pertumbuhan ekonomi sektor non-LaS diproyeksikan dengan rerata pertumbuhan ekonomi 10 tahun terakhir
+
+```{r, echo = FALSE, warning=FALSE}
+## Ekstrak vector rerata pertumbuhan sektor unconstrained
+rate <- DeskripsiSektor$RateUnconstrained
+
+## Buat matrix untuk menyimpan hasil 
+all_steps <- matrix(NA, nrow = jml_sektor, ncol = n_tahunSimulasi)
+current_val <- fd
+
+## Loop untuk menghitung FD scenario
+for (i in 1:n_tahunSimulasi) {
+  current_val <- ((current_val * rate) + current_val) * Unconstrained
+  all_steps[, i] <- current_val  # Store result in column 'i'
+}
+
+## Memberikan nama kolom pada hasil perhitungan FD scenario
+colnames(all_steps) <- paste0("FD", 2024:2050)
+
+# add FD2025 into the new matrix
+fd_BAU_uncon <- all_steps
+fd_BAU2025 <- fd * Unconstrained
+fd_BAU_uncon <- cbind(fd_BAU2025, fd_BAU_uncon)
+colnames(fd_BAU_uncon)[1] <- "FD2025"
+
+# Extract data luasan tutupan lahan dari hasil simulasi BAU
+BAUArea <- as.matrix(BAULahan[, (ncol(BAULahan) - n_tahunSimulasi):ncol(BAULahan)])
+storage.mode(BAUArea) <- "double"
+
+# Persiapkan data LDM dan LPC
+LDM_matrix    <- as.matrix(LDM_matrix)
+LPC           <- as.numeric(LPC)
+Unconstrained <- as.numeric(Unconstrained)
+num_rows <- nrow(LDM_matrix)
+num_cols <- ncol(BAUArea)
+
+# Loop untuk menghitung total area sektor dan Final Demand BAU
+final_results <- matrix(NA, nrow = nrow(LDM_matrix), ncol = ncol(BAUArea))
+
+for (i in 1:ncol(BAUArea)) {
+  r_sums <- as.vector(LDM_matrix %*% BAUArea[, i])
+  step_res <- r_sums * LPC * Constrained
+  final_results[, i] <- r_sums * LPC * Constrained
+  # Replace NaN before saving
+  step_res[is.nan(step_res)] <- 0
+  final_results[, i] <- step_res
+}
+
+# buat tabel FD keseluruhan BAU
+final_results[is.nan(final_results)] <- 0
+final_results[is.na(final_results)] <- 0
+colnames(final_results) <- colnames(BAUArea)
+fd_BAU_con <- final_results
+fd_BAU <- fd_BAU_con + fd_BAU_uncon
+
+# Loop untuk menghitung total PDRB hasil simulasi BAU
+final_results <- matrix(NA, nrow = nrow(fd_BAU), ncol = ncol(fd_BAU))
+
+for (i in 1:ncol(fd_BAU)) {
+  r_sums <- as.vector(Leontief_Inverse %*% fd_BAU[, i])
+  step_res <- r_sums 
+  final_results[, i] <- r_sums * ntbProp
+  # Replace NaN before saving
+  final_results[is.nan(final_results)] <- 0
+  #final_results[, i] <- step_res
+}
+
+# buat tabel FD keseluruhan PDRB BAU
+colnames(final_results) <- colnames(BAUArea)
+pdrb_BAU <- final_results
+
+pdrb_BAU_total <- colSums(pdrb_BAU)
+# plot(pdrb_BAU_total)
+years <- tahunAwal:tahunAkhir
+plot_df <- data.frame(
+  Year = years,
+  pdrb_BAU = pdrb_BAU_total
+)
+p <- ggplot(plot_df, aes(x = Year, y = pdrb_BAU)) +
+  geom_line(aes(color = "BAU Scenario"), linewidth = 1.1) +
+  geom_point(aes(color = "BAU Scenario"), size = 2) +
+  scale_color_manual(
+    name = "Skenario",
+    values = c("BAU Scenario" = "#D95F02")
+  ) +
+  scale_x_continuous(breaks = seq(tahunAwal, tahunAkhir, by = 5)) +
+  labs(
+    title = "Proyeksi PDRB: Skenario BAU",
+    x = "Tahun",
+    y = "Total PDRB"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  )
+
+# 6. Tampilkan grafik
+print(p)
+
+```
+
+
+## PDRB
+
+```{r, echo = FALSE, warning=FALSE}
+# ==============================================================================
+# 0. PENETAPAN PARAMETER WAKTU SIMULASI (2023-2050)
+# ==============================================================================
+tahunAwal  <- tahunAwal
+tahunAkhir <- tahunAkhir
+n_tahun    <- tahunAkhir - tahunAwal  # 27 tahun untuk perhitungan CAGR (2023 ke 2050)
+
+# ==============================================================================
+# 1. TABEL PDRB BAU & EKSPOR EXCEL
+# ==============================================================================
+
+# Data frame hasil proyeksi PDRB BAU
+final_pdrb <- plot_df
+
+# Ekspor ke file Excel
+# write_xlsx(final_pdrb, "Final_PDRB_BAU_Bukecap_2023_2050.xlsx")
+
+# Cetak Tabel PDRB BAU
+knitr::kable(
+  final_pdrb,
+  row.names = FALSE,
+  caption = sprintf("Proyeksi PDRB BUKECAP Skenario BAU (%d–%d) (Juta Rupiah)", tahunAwal, tahunAkhir),
+  digits = 2,
+  format.args = list(big.mark = ","),
+  col.names = c("Tahun", "PDRB BAU"),
+  align = c("c", "r")
+) %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center"
+  )
+
+# ==============================================================================
+# 2. LINE CHART PROYEKSI PDRB BAU (2023–2050) DENGAN CALLOUT LABEL
+# ==============================================================================
+
+# Mengambil nilai spesifik tahun awal (2023) dan tahun akhir (2050)
+val_awal  <- plot_df$pdrb_BAU[plot_df$Year == tahunAwal]
+val_akhir <- plot_df$pdrb_BAU[plot_df$Year == tahunAkhir]
+
+# Format angka dengan pemisah koma
+lbl_awal  <- comma(round(val_awal, 0))
+lbl_akhir <- comma(round(val_akhir, 0))
+
+# Rentang Sumbu Y otomatis dengan buffer untuk posisi label
+y_range  <- max(plot_df$pdrb_BAU) - min(plot_df$pdrb_BAU)
+y_offset <- y_range * 0.12
+
+hasil_simulasi_label <- ggplot(plot_df, aes(x = Year, y = pdrb_BAU)) +
+  # Line & Point untuk Skenario BAU
+  geom_line(color = "#D95F02", linewidth = 1.2) +
+  geom_point(color = "#D95F02", size = 2.5) +
+
+  # Segment garis penunjuk (Callout Pointer Lines)
+  annotate("segment", x = tahunAwal + 0.2, xend = tahunAwal + 2.8, y = val_awal, yend = val_awal + y_offset, color = "gray40", linewidth = 0.6) +
+  annotate("segment", x = tahunAkhir - 0.2, xend = tahunAkhir - 2.8, y = val_akhir, yend = val_akhir - y_offset, color = "gray40", linewidth = 0.6) +
+
+  # Kotak Label Nilai (Excel Style Box)
+  annotate("label", x = tahunAwal + 3.5, y = val_awal + y_offset * 1.05, label = paste0(tahunAwal, ": Rp ", lbl_awal),
+           fontface = "bold", fill = "#EAEAEA", color = "black", size = 3.8, label.padding = unit(0.4, "lines")) +
+  annotate("label", x = tahunAkhir - 3.5, y = val_akhir - y_offset * 1.05, label = paste0(tahunAkhir, ": Rp ", lbl_akhir),
+           fontface = "bold", fill = "#EAEAEA", color = "black", size = 3.8, label.padding = unit(0.4, "lines")) +
+
+  # Skala & Warna Sumbu
+  scale_x_continuous(breaks = seq(tahunAwal, tahunAkhir, by = 5)) +
+  scale_y_continuous(labels = comma_format()) +
+
+  # Judul & Tema Tampilan
+  labs(
+    title = sprintf("Proyeksi PDRB BUKECAP: Skenario BAU (%d–%d)", tahunAwal, tahunAkhir),
+    x = "Tahun",
+    y = "Total PDRB (Juta Rupiah)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(color = "black")
+  )
+
+# Tampilkan Grafik Line Chart
+print(hasil_simulasi_label)
+
+# ==============================================================================
+# 3. PEMISAHAN PDRB BERDASARKAN KELOMPOK SEKTOR (LAS vs LAINNYA vs KESELURUHAN)
+# ==============================================================================
+
+# Ambil vektor penanda sektor constrained (1 = LAS/Constrained, 0 = Sektor Lainnya)
+v_las <- as.numeric(DeskripsiSektor$Constrained)
+v_las[is.na(v_las)] <- 0
+v_lainnya <- 1 - v_las
+
+# Fungsi pemisah PDRB matriks
+hitung_pdrb_kelompok <- function(matriks_pdrb) {
+  pdrb_las     <- colSums(matriks_pdrb[v_las == 1, , drop = FALSE])
+  pdrb_lainnya <- colSums(matriks_pdrb[v_lainnya == 1, , drop = FALSE])
+  pdrb_total   <- colSums(matriks_pdrb)
+  
+  return(list(LAS = pdrb_las, Lainnya = pdrb_lainnya, Total = pdrb_total))
+}
+
+# Hitung PDRB kelompok untuk skenario BAU
+res_BAU <- hitung_pdrb_kelompok(pdrb_BAU)
+
+# ==============================================================================
+# 4. PERHITUNGAN RERATA PERTUMBUHAN TAHUNAN (CAGR 2023–2050)
+# ==============================================================================
+
+# Rumus Compound Annual Growth Rate (CAGR) dinamis berdasarkan rentang tahun
+calc_cagr <- function(vec_pdrb, idx_start = as.character(tahunAwal), idx_end = as.character(tahunAkhir), n_yrs = n_tahun) {
+  val_start <- vec_pdrb[idx_start]
+  val_end   <- vec_pdrb[idx_end]
+  cagr      <- ((val_end / val_start)^(1 / n_yrs) - 1) * 100
+  return(as.numeric(cagr))
+}
+
+# Data Frame CAGR BAU
+cagr_data_bau <- data.frame(
+  Kelompok = factor(c("Sektor LAS", "Sektor Lainnya", "Keseluruhan"),
+                    levels = c("Sektor LAS", "Sektor Lainnya", "Keseluruhan")),
+  Growth   = c(
+    calc_cagr(res_BAU$LAS),
+    calc_cagr(res_BAU$Lainnya),
+    calc_cagr(res_BAU$Total)
+  )
+)
+
+# ==============================================================================
+# 5. VISUALISASI BAR CHART PERTUMBUHAN SEKTORAL BAU (2023–2050)
+# ==============================================================================
+
+p_bar_growth_bau <- ggplot(cagr_data_bau, aes(x = Kelompok, y = Growth, fill = Kelompok)) +
+  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) +
+  geom_text(
+    aes(label = sprintf("%.2f%%", Growth)),
+    vjust = -0.5,
+    fontface = "bold",
+    size = 4,
+    color = "black"
+  ) +
+  scale_y_continuous(
+    labels = function(x) paste0(format(x, nsmall = 1), "%"),
+    expand = expansion(mult = c(0, 0.2))
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Sektor LAS"     = "#E69F00",
+      "Sektor Lainnya" = "#56B4E9",
+      "Keseluruhan"    = "#4178BE"
+    )
+  ) +
+  labs(
+    title = sprintf("Rerata Pertumbuhan Tahunan (CAGR %d–%d): Skenario BAU", tahunAwal, tahunAkhir),
+    x = NULL,
+    y = "Pertumbuhan Tahunan (%)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 13, color = "gray20"),
+    axis.text.x = element_text(face = "bold", size = 11, color = "gray20"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+
+print(p_bar_growth_bau)
+
+# ==============================================================================
+# 6. TABEL RINGKASAN INDIKATOR PDRB BAU
+# ==============================================================================
+
+pdrb_awal  <- res_BAU$Total[as.character(tahunAwal)]
+pdrb_akhir <- res_BAU$Total[as.character(tahunAkhir)]
+cagr_bau   <- calc_cagr(res_BAU$Total)
+
+df_ringkasan_bau <- data.frame(
+  Indikator = c(
+    sprintf("Total PDRB BAU Tahun %d", tahunAwal),
+    sprintf("Total PDRB BAU Tahun %d", tahunAkhir),
+    sprintf("Pertumbuhan Akumulatif (%d–%d)", tahunAwal, tahunAkhir),
+    sprintf("Rerata Laju Pertumbuhan BAU (CAGR %d–%d)", tahunAwal, tahunAkhir),
+    sprintf("Rerata Laju Pertumbuhan Sektor LAS (CAGR %d–%d)", tahunAwal, tahunAkhir),
+    sprintf("Rerata Laju Pertumbuhan Sektor Lainnya (CAGR %d–%d)", tahunAwal, tahunAkhir)
+  ),
+  Nilai = c(
+    sprintf("Rp %s Juta", comma(round(pdrb_awal, 2))),
+    sprintf("Rp %s Juta", comma(round(pdrb_akhir, 2))),
+    sprintf("+%.2f%%", ((pdrb_akhir - pdrb_awal) / pdrb_awal) * 100),
+    sprintf("%.2f%% per tahun", cagr_bau),
+    sprintf("%.2f%% per tahun", calc_cagr(res_BAU$LAS)),
+    sprintf("%.2f%% per tahun", calc_cagr(res_BAU$Lainnya))
+  )
+)
+
+knitr::kable(
+  df_ringkasan_bau,
+  row.names = FALSE,
+  caption = sprintf("Ringkasan Indikator Proyeksi PDRB BAU (%d–%d)", tahunAwal, tahunAkhir),
+  col.names = c("Parameter Indikator", "Nilai Simulasi BAU"),
+  align = c("l", "r")
+) %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center"
+  ) %>%
+  kableExtra::row_spec(0, bold = TRUE, extra_css = "border-top: 2px solid #ccc; border-bottom: 2px solid #ccc;") %>%
+  kableExtra::row_spec(4, bold = TRUE, background = "#EAEAEA")
+```
+
+
