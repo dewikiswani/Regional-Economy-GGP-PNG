@@ -476,7 +476,7 @@ p_import <- ggplot(top15_import, aes(x = reorder(nama_Sektor, Import_Effect), y 
   geom_text(aes(label = round(Import_Effect, 4)), hjust = -0.15, size = 3) +
   coord_flip() +
   labs(
-    title = "Top 15 Sektor - Import Effect (Kebocoran Ekonomi)",
+    title = "Top 15 Sektor - Import Effect",
     subtitle = "Import Leakage Impact per Unit of Final Demand",
     x = NULL,
     y = "Import Effect (Million Kina/Million Kina)"
@@ -640,7 +640,7 @@ print(p)
 ```
 
 
-## PDRB
+## Gross Regional Product (GRP)
 
 ```{r, echo = FALSE, warning=FALSE}
 # ==============================================================================
@@ -853,4 +853,71 @@ knitr::kable(
   kableExtra::row_spec(4, bold = TRUE, background = "#EAEAEA")
 ```
 
+## Gross Regional Product (GRP) 2019 and 2023
 
+```{r, echo = FALSE, warning=FALSE}
+# ==============================================================================
+# REKONSTRUKSI GRP TAHUNAN (2019 - 2023) BERDASARKAN CAGR PER SEKTOR
+# ==============================================================================
+
+# 1. BACA FILE IO TAHUN 2019
+io_2019 <- read.csv("io_png_oro_2019.csv", 
+                    header = TRUE, 
+                    sep = ",", 
+                    stringsAsFactors = FALSE)
+
+# 2. EKSTRAK GRP SEKTORAL 2019 DAN 2023
+grp_2019_sectoral <- as.numeric(io_2019[baris_totInputPrimer, kolom_Sektor])
+grp_2019_sectoral[is.na(grp_2019_sectoral)] <- 0
+
+grp_2023_sectoral <- as.numeric(pdrb_BAU[, 1]) # Baseline simulasi 2023
+grp_2023_sectoral[is.na(grp_2023_sectoral)] <- 0
+
+# 3. HITUNG CAGR TAHUNAN (PERIODE 4 TAHUN: 2019 -> 2023)
+n_yrs <- 2023 - 2019
+cagr_annual <- ifelse(
+  grp_2019_sectoral > 0 & grp_2023_sectoral > 0,
+  (grp_2023_sectoral / grp_2019_sectoral)^(1 / n_yrs) - 1,
+  0
+)
+
+# 4. ESTIMASI NILAI GRP TAHUN 2020, 2021, DAN 2022
+grp_2020_sectoral <- grp_2019_sectoral * (1 + cagr_annual)
+grp_2021_sectoral <- grp_2019_sectoral * ((1 + cagr_annual)^2)
+grp_2022_sectoral <- grp_2019_sectoral * ((1 + cagr_annual)^3)
+
+# 5. SUSUN DATA FRAME KESELURUHAN (2019–2023)
+df_grp_timeseries <- data.frame(
+  No = 1:jml_sektor,
+  Sector_ID = kolom_Sektor,
+  Sector_Name = namaSektor,
+  `2019` = round(grp_2019_sectoral, 4),
+  `2020` = round(grp_2020_sectoral, 4),
+  `2021` = round(grp_2021_sectoral, 4),
+  `2022` = round(grp_2022_sectoral, 4),
+  `2023` = round(grp_2023_sectoral, 4),
+  `Annual_CAGR_Percent` = round(cagr_annual * 100, 2),
+  check.names = FALSE
+)
+
+# 6. EKSPOR KE FILE EXCEL (.XLSX)
+write_xlsx(df_grp_timeseries, "GRP_TimeSeries_Sectoral_Oro_2019_2023.xlsx")
+
+# 7. TAMPILKAN TABEL PADA LAPORAN QUARTO
+knitr::kable(
+  df_grp_timeseries,
+  row.names = FALSE,
+  caption = "Sectoral Gross Regional Product (GRP) Time Series for Oro Province (2019–2023) (Million PGK)",
+  digits = 2,
+  format.args = list(big.mark = ","),
+  col.names = c("No", "Sector ID", "Sector Name", "2019", "2020", "2021", "2022", "2023", "Annual Growth (%/year)"),
+  align = c("c", "c", "l", "r", "r", "r", "r", "r", "r")
+) %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = TRUE,
+    position = "center"
+  )
+
+
+```
