@@ -11,7 +11,7 @@ editor: visual
 
 ## Data Input and Reading
 
-Terdapat 4 file data input berformat xlsx yang digunakan, yaitu:
+There are 4 input data files in xlsx format used, namely:
 
 ```{r tabel-rapi, echo=FALSE, message=FALSE, warning=FALSE}
 library(knitr)
@@ -26,17 +26,17 @@ library(kableExtra)
 # Membuat data frame
 df <- data.frame(
   No = 1:4,
-  `Keterangan Data Input` = c(
+  `Input Data Description` = c(
     "Tabel Input-Output BUKECAP tahun 2025",
     "Data deskripsi sektor yang berisi:<br>• Nama pendek sektor<br>• Nama singkat sektor<br>• Kategori KSM<br>• Label constrained sector<br>• Label unconstrained sector<br>• Rataan pertumbuhan PDRB ADHK (yoy) setiap sector unconstrained<br>• Jumlah tenaga kerja setiap sektor di tahun 2025",
     "Data Land Distribution Coefficient BAU", 
     "Data luasan lahan (dalam hektare) berdasarkan tipe land cover historis dan proyeksi menggunakan asumsi skenario BAU"
   ),
-  `Nama Variabel R` = c("<code>IO BUKECAP</code>", 
+  `R Variable Name` = c("<code>IO BUKECAP</code>", 
                        "<code>DeskripsiSektor</code>", 
                        "<code>LDM</code>", 
                        "<code>BAU_Lahan</code>"),
-  `Nama File XLSX` = c("io", 
+  `XLSX File Name` = c("io", 
                         "DeskripsiSektor", 
                         "LDC", 
                         "BAU_Lahan"),
@@ -239,16 +239,16 @@ tabel_linkage <- data.frame(
 tabel_kuadran <- tabel_linkage %>%
   mutate(
     Kuadran = case_when(
-      ITBL > 1 & ITFL > 1  ~ "K1 (BL Tinggi, FL Tinggi)",
-      ITBL > 1 & ITFL <= 1 ~ "K2 (BL Tinggi, FL Rendah)",
-      ITBL <= 1 & ITFL > 1 ~ "K3 (BL Rendah, FL Tinggi)",
-      TRUE               ~ "K4 (BL Rendah, FL Rendah)"
+      ITBL > 1 & ITFL > 1  ~ "K1 (BL High, FL High)",
+      ITBL > 1 & ITFL <= 1 ~ "K2 (BL High, FL Low)",
+      ITBL <= 1 & ITFL > 1 ~ "K3 (BL Low, FL High)",
+      TRUE               ~ "K4 (BL Low, FL Low)"
     ),
     Kategori = case_when(
-      ITBL > 1 & ITFL > 1  ~ "Sektor Kunci (Key Sector)",
-      ITBL > 1 & ITFL <= 1 ~ "Sektor Pendorong Hulu (Backward-Oriented)",
-      ITBL <= 1 & ITFL > 1 ~ "Sektor Pendukung Hilir (Forward-Oriented)",
-      TRUE               ~ "Sektor Lemah / Terisolasi (Weak Sector)"
+      ITBL > 1 & ITFL > 1  ~ "Key Sector",
+      ITBL > 1 & ITFL <= 1 ~ "Backward-Oriented Sector",
+      ITBL <= 1 & ITFL > 1 ~ "Forward-Oriented Sector",
+      TRUE                 ~ "Weak / Isolated Sector"
     )
   )
 
@@ -267,10 +267,10 @@ p_linkage <- ggplot(tabel_kuadran, aes(x = ITBL, y = ITFL, label = id_Sektor)) +
   # geom_text(vjust = -0.7, size = 2.5, check_overlap = TRUE) +
   
   labs(
-    title = "Diagram Kuadran Backward & Forward Linkage Sektor Ekonomi",
-    subtitle = "Garis Merah Putus-putus Menunjukkan Batas Indeks = 1.00",
-    x = "Indeks Total Backward Linkage (ITBL) / Indeks Daya Penyebaran (IDP)",
-    y = "Indeks Total Forward Linkage (ITFL) / Indeks Derajat Kepekaan (IDK)"
+    title = "Economic Sector Backward & Forward Linkage Quadrant Diagram",
+  subtitle = "Red Dashed Line Indicates Index Boundary = 1.00",
+    x = "Indeks Total Backward Linkage (ITBL)",
+    y = "Indeks Total Forward Linkage (ITFL)"
   ) +
   theme_minimal()
 
@@ -289,10 +289,10 @@ p_linkagePendek <- ggplot(tabel_kuadran, aes(x = ITBL, y = ITFL, label = NamaPen
   # geom_text(vjust = -0.7, size = 2.5, check_overlap = TRUE) +
   
   labs(
-    title = "Diagram Kuadran Backward & Forward Linkage Sektor Ekonomi",
-    subtitle = "Garis Merah Putus-putus Menunjukkan Batas Indeks = 1.00",
-    x = "Indeks Total Backward Linkage (ITBL) / Indeks Daya Penyebaran (IDP)",
-    y = "Indeks Total Forward Linkage (ITFL) / Indeks Derajat Kepekaan (IDK)"
+    title = "Economic Sector Backward & Forward Linkage Quadrant Diagram",
+  subtitle = "Red Dashed Line Indicates Index Boundary = 1.00",
+    x = "Indeks Total Backward Linkage (ITBL)",
+    y = "Indeks Total Forward Linkage (ITFL)"
   ) +
   theme_minimal() +
   theme(
@@ -441,9 +441,9 @@ p_income <- ggplot(top15_income, aes(x = reorder(nama_Sektor, Income_Effect), y 
   coord_flip() +
   labs(
     title = "Top 15 Sektor - Income Effect",
-    subtitle = "Dampak Pendapatan Rumah Tangga per Unit Permintaan Akhir",
+    subtitle = "Household Income Impact per Unit of Final Demand",
     x = NULL,
-    y = "Income Effect (Juta Rupiah/Juta Rupiah)"
+    y = "Income Effect (Million Kina/Million Kina)"
   ) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
   theme_minimal() +
@@ -459,9 +459,9 @@ p_labour <- ggplot(top15_labour, aes(x = reorder(nama_Sektor, Labour_Effect), y 
   coord_flip() +
   labs(
     title = "Top 15 Sektor - Labour Effect",
-    subtitle = "Penyerapan Tenaga Kerja per Unit Permintaan Akhir",
+    subtitle = "Labor Absorption per Unit of Final Demand",
     x = NULL,
-    y = "Labour Effect (Orang/Juta Rupiah)"
+    y = "Labour Effect (Person/Million Kina)"
   ) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
   theme_minimal() +
@@ -477,9 +477,9 @@ p_import <- ggplot(top15_import, aes(x = reorder(nama_Sektor, Import_Effect), y 
   coord_flip() +
   labs(
     title = "Top 15 Sektor - Import Effect (Kebocoran Ekonomi)",
-    subtitle = "Dampak Kebocoran Impor Input per Unit Permintaan Akhir",
+    subtitle = "Import Leakage Impact per Unit of Final Demand",
     x = NULL,
-    y = "Import Effect (Juta Rupiah/Juta Rupiah)"
+    y = "Import Effect (Million Kina/Million Kina)"
   ) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
   theme_minimal() +
@@ -496,7 +496,7 @@ p_output <- ggplot(top15_output, aes(x = reorder(nama_Sektor, Output_Multiplier)
   labs(
     title = "Top 15 Sektor - Output Multiplier",
     x = NULL,
-    y = "Output Effect (Juta Rupiah/Juta Rupiah)"
+    y = "Output Effect (Million Kina/Million Kina)"
   ) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
   theme_minimal() +
@@ -531,13 +531,13 @@ gabungan_plot <- p_income / p_labour / p_import / p_output +
 
 ## Simulation BAU
 
-### Definisi
+### Definition
 
-Skenario ini merupakan proyeksi kondisi ekonomi dan lingkungan yang berjalan tanpa adanya intervensi kebijakan baru atau perubahan signifikan dalam tata kelola sumber daya hingga tahun 2045.
+This scenario represents a projection of economic and environmental conditions under a status-quo trajectory, assuming no new policy interventions or significant changes in resource governance up to 2050.
 
-### Asumsi
+### Assumptions
 
-Proyeksi perubahan penggunaan lahan dimodelkan dengan mengacu pada data historis tahun 2020 sampai tahun 2025. Pertumbuhan ekonomi sektor non-LaS diproyeksikan dengan rerata pertumbuhan ekonomi 10 tahun terakhir
+Economic growth for non-LaS (non-land-based) sectors is projected using the average annual economic growth rate over the past 5 years (2019-2023).
 
 ```{r, echo = FALSE, warning=FALSE}
 ## Ekstrak vector rerata pertumbuhan sektor unconstrained
@@ -619,14 +619,14 @@ p <- ggplot(plot_df, aes(x = Year, y = pdrb_BAU)) +
   geom_line(aes(color = "BAU Scenario"), linewidth = 1.1) +
   geom_point(aes(color = "BAU Scenario"), size = 2) +
   scale_color_manual(
-    name = "Skenario",
+    name = "Scenario",
     values = c("BAU Scenario" = "#D95F02")
   ) +
   scale_x_continuous(breaks = seq(tahunAwal, tahunAkhir, by = 5)) +
   labs(
-    title = "Proyeksi PDRB: Skenario BAU",
-    x = "Tahun",
-    y = "Total PDRB"
+    title = "Gross Regional Product Projection: Scenario BAU",
+    x = "Years",
+    y = "Total GRP"
   ) +
   theme_minimal(base_size = 13) +
   theme(
@@ -644,30 +644,30 @@ print(p)
 
 ```{r, echo = FALSE, warning=FALSE}
 # ==============================================================================
-# 0. PENETAPAN PARAMETER WAKTU SIMULASI (2023-2050)
+# 0. SIMULATION TIME PARAMETERS (2023-2050)
 # ==============================================================================
-tahunAwal  <- tahunAwal
-tahunAkhir <- tahunAkhir
-n_tahun    <- tahunAkhir - tahunAwal  # 27 tahun untuk perhitungan CAGR (2023 ke 2050)
+tahunAwal  <- 2023
+tahunAkhir <- 2050
+n_tahun    <- tahunAkhir - tahunAwal  # 27 years for CAGR calculation (2023 to 2050)
 
 # ==============================================================================
-# 1. TABEL PDRB BAU & EKSPOR EXCEL
+# 1. GRP BAU TABLE & EXCEL EXPORT
 # ==============================================================================
 
-# Data frame hasil proyeksi PDRB BAU
+# Data frame of projected BAU GRP
 final_pdrb <- plot_df
 
-# Ekspor ke file Excel
-# write_xlsx(final_pdrb, "Final_PDRB_BAU_Bukecap_2023_2050.xlsx")
+# Export to Excel file
+# write_xlsx(final_pdrb, "Final_GRP_BAU_Oro_Province_2023_2050.xlsx")
 
-# Cetak Tabel PDRB BAU
+# Print BAU GRP Table
 knitr::kable(
   final_pdrb,
   row.names = FALSE,
-  caption = sprintf("Proyeksi PDRB BUKECAP Skenario BAU (%d–%d) (Juta Rupiah)", tahunAwal, tahunAkhir),
+  caption = sprintf("Gross Regional Product (GRP) Projection: BAU Scenario (%d–%d) (Million PGK)", tahunAwal, tahunAkhir),
   digits = 2,
   format.args = list(big.mark = ","),
-  col.names = c("Tahun", "PDRB BAU"),
+  col.names = c("Year", "BAU GRP"),
   align = c("c", "r")
 ) %>%
   kableExtra::kable_styling(
@@ -677,45 +677,45 @@ knitr::kable(
   )
 
 # ==============================================================================
-# 2. LINE CHART PROYEKSI PDRB BAU (2023–2050) DENGAN CALLOUT LABEL
+# 2. LINE CHART PROJECTION FOR BAU GRP (2023–2050) WITH CALLOUT LABELS
 # ==============================================================================
 
-# Mengambil nilai spesifik tahun awal (2023) dan tahun akhir (2050)
+# Extract specific values for baseline (2023) and end year (2050)
 val_awal  <- plot_df$pdrb_BAU[plot_df$Year == tahunAwal]
 val_akhir <- plot_df$pdrb_BAU[plot_df$Year == tahunAkhir]
 
-# Format angka dengan pemisah koma
+# Format numbers with commas
 lbl_awal  <- comma(round(val_awal, 0))
 lbl_akhir <- comma(round(val_akhir, 0))
 
-# Rentang Sumbu Y otomatis dengan buffer untuk posisi label
+# Dynamic Y-axis offset for callout placement
 y_range  <- max(plot_df$pdrb_BAU) - min(plot_df$pdrb_BAU)
 y_offset <- y_range * 0.12
 
 hasil_simulasi_label <- ggplot(plot_df, aes(x = Year, y = pdrb_BAU)) +
-  # Line & Point untuk Skenario BAU
+  # Line & Point for BAU Scenario
   geom_line(color = "#D95F02", linewidth = 1.2) +
   geom_point(color = "#D95F02", size = 2.5) +
 
-  # Segment garis penunjuk (Callout Pointer Lines)
+  # Callout Pointer Lines
   annotate("segment", x = tahunAwal + 0.2, xend = tahunAwal + 2.8, y = val_awal, yend = val_awal + y_offset, color = "gray40", linewidth = 0.6) +
   annotate("segment", x = tahunAkhir - 0.2, xend = tahunAkhir - 2.8, y = val_akhir, yend = val_akhir - y_offset, color = "gray40", linewidth = 0.6) +
 
-  # Kotak Label Nilai (Excel Style Box)
-  annotate("label", x = tahunAwal + 3.5, y = val_awal + y_offset * 1.05, label = paste0(tahunAwal, ": Rp ", lbl_awal),
+  # Excel-style Label Boxes
+  annotate("label", x = tahunAwal + 3.5, y = val_awal + y_offset * 1.05, label = paste0(tahunAwal, ": PGK ", lbl_awal, " M"),
            fontface = "bold", fill = "#EAEAEA", color = "black", size = 3.8, label.padding = unit(0.4, "lines")) +
-  annotate("label", x = tahunAkhir - 3.5, y = val_akhir - y_offset * 1.05, label = paste0(tahunAkhir, ": Rp ", lbl_akhir),
+  annotate("label", x = tahunAkhir - 3.5, y = val_akhir - y_offset * 1.05, label = paste0(tahunAkhir, ": PGK ", lbl_akhir, " M"),
            fontface = "bold", fill = "#EAEAEA", color = "black", size = 3.8, label.padding = unit(0.4, "lines")) +
 
-  # Skala & Warna Sumbu
+  # Axis Scale & Formatting
   scale_x_continuous(breaks = seq(tahunAwal, tahunAkhir, by = 5)) +
   scale_y_continuous(labels = comma_format()) +
 
-  # Judul & Tema Tampilan
+  # Labels & Theme
   labs(
-    title = sprintf("Proyeksi PDRB BUKECAP: Skenario BAU (%d–%d)", tahunAwal, tahunAkhir),
-    x = "Tahun",
-    y = "Total PDRB (Juta Rupiah)"
+    title = sprintf("GRP Projection for Oro Province: BAU Scenario (%d–%d)", tahunAwal, tahunAkhir),
+    x = "Year",
+    y = "Total GRP (Million PGK)"
   ) +
   theme_minimal(base_size = 13) +
   theme(
@@ -724,35 +724,35 @@ hasil_simulasi_label <- ggplot(plot_df, aes(x = Year, y = pdrb_BAU)) +
     axis.text = element_text(color = "black")
   )
 
-# Tampilkan Grafik Line Chart
+# Display Line Chart
 print(hasil_simulasi_label)
 
 # ==============================================================================
-# 3. PEMISAHAN PDRB BERDASARKAN KELOMPOK SEKTOR (LAS vs LAINNYA vs KESELURUHAN)
+# 3. GRP BREAKDOWN BY SECTOR GROUP (LAS vs OTHER SECTORS vs TOTAL)
 # ==============================================================================
 
-# Ambil vektor penanda sektor constrained (1 = LAS/Constrained, 0 = Sektor Lainnya)
+# Extract indicator vector for constrained sectors (1 = LAS/Constrained, 0 = Other Sectors)
 v_las <- as.numeric(DeskripsiSektor$Constrained)
 v_las[is.na(v_las)] <- 0
 v_lainnya <- 1 - v_las
 
-# Fungsi pemisah PDRB matriks
+# Function to calculate grouped GRP
 hitung_pdrb_kelompok <- function(matriks_pdrb) {
   pdrb_las     <- colSums(matriks_pdrb[v_las == 1, , drop = FALSE])
   pdrb_lainnya <- colSums(matriks_pdrb[v_lainnya == 1, , drop = FALSE])
   pdrb_total   <- colSums(matriks_pdrb)
   
-  return(list(LAS = pdrb_las, Lainnya = pdrb_lainnya, Total = pdrb_total))
+  return(list(LAS = pdrb_las, Other = pdrb_lainnya, Total = pdrb_total))
 }
 
-# Hitung PDRB kelompok untuk skenario BAU
+# Calculate grouped GRP for BAU scenario
 res_BAU <- hitung_pdrb_kelompok(pdrb_BAU)
 
 # ==============================================================================
-# 4. PERHITUNGAN RERATA PERTUMBUHAN TAHUNAN (CAGR 2023–2050)
+# 4. ANNUAL AVERAGE GROWTH RATE (CAGR 2023–2050)
 # ==============================================================================
 
-# Rumus Compound Annual Growth Rate (CAGR) dinamis berdasarkan rentang tahun
+# Compound Annual Growth Rate (CAGR) function
 calc_cagr <- function(vec_pdrb, idx_start = as.character(tahunAwal), idx_end = as.character(tahunAkhir), n_yrs = n_tahun) {
   val_start <- vec_pdrb[idx_start]
   val_end   <- vec_pdrb[idx_end]
@@ -760,22 +760,22 @@ calc_cagr <- function(vec_pdrb, idx_start = as.character(tahunAwal), idx_end = a
   return(as.numeric(cagr))
 }
 
-# Data Frame CAGR BAU
+# CAGR Data Frame
 cagr_data_bau <- data.frame(
-  Kelompok = factor(c("Sektor LAS", "Sektor Lainnya", "Keseluruhan"),
-                    levels = c("Sektor LAS", "Sektor Lainnya", "Keseluruhan")),
-  Growth   = c(
+  Group  = factor(c("LAS Sectors", "Other Sectors", "Overall Economy"),
+                  levels = c("LAS Sectors", "Other Sectors", "Overall Economy")),
+  Growth = c(
     calc_cagr(res_BAU$LAS),
-    calc_cagr(res_BAU$Lainnya),
+    calc_cagr(res_BAU$Other),
     calc_cagr(res_BAU$Total)
   )
 )
 
 # ==============================================================================
-# 5. VISUALISASI BAR CHART PERTUMBUHAN SEKTORAL BAU (2023–2050)
+# 5. BAR CHART: SECTORAL GROWTH RATE FOR BAU (2023–2050)
 # ==============================================================================
 
-p_bar_growth_bau <- ggplot(cagr_data_bau, aes(x = Kelompok, y = Growth, fill = Kelompok)) +
+p_bar_growth_bau <- ggplot(cagr_data_bau, aes(x = Group, y = Growth, fill = Group)) +
   geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) +
   geom_text(
     aes(label = sprintf("%.2f%%", Growth)),
@@ -790,15 +790,15 @@ p_bar_growth_bau <- ggplot(cagr_data_bau, aes(x = Kelompok, y = Growth, fill = K
   ) +
   scale_fill_manual(
     values = c(
-      "Sektor LAS"     = "#E69F00",
-      "Sektor Lainnya" = "#56B4E9",
-      "Keseluruhan"    = "#4178BE"
+      "LAS Sectors"     = "#E69F00",
+      "Other Sectors"   = "#56B4E9",
+      "Overall Economy" = "#4178BE"
     )
   ) +
   labs(
-    title = sprintf("Rerata Pertumbuhan Tahunan (CAGR %d–%d): Skenario BAU", tahunAwal, tahunAkhir),
+    title = sprintf("Average Annual Growth Rate (CAGR %d–%d): BAU Scenario", tahunAwal, tahunAkhir),
     x = NULL,
-    y = "Pertumbuhan Tahunan (%)"
+    y = "Annual Growth Rate (%)"
   ) +
   theme_minimal(base_size = 13) +
   theme(
@@ -811,7 +811,7 @@ p_bar_growth_bau <- ggplot(cagr_data_bau, aes(x = Kelompok, y = Growth, fill = K
 print(p_bar_growth_bau)
 
 # ==============================================================================
-# 6. TABEL RINGKASAN INDIKATOR PDRB BAU
+# 6. SUMMARY TABLE FOR BAU GRP INDICATORS
 # ==============================================================================
 
 pdrb_awal  <- res_BAU$Total[as.character(tahunAwal)]
@@ -819,29 +819,29 @@ pdrb_akhir <- res_BAU$Total[as.character(tahunAkhir)]
 cagr_bau   <- calc_cagr(res_BAU$Total)
 
 df_ringkasan_bau <- data.frame(
-  Indikator = c(
-    sprintf("Total PDRB BAU Tahun %d", tahunAwal),
-    sprintf("Total PDRB BAU Tahun %d", tahunAkhir),
-    sprintf("Pertumbuhan Akumulatif (%d–%d)", tahunAwal, tahunAkhir),
-    sprintf("Rerata Laju Pertumbuhan BAU (CAGR %d–%d)", tahunAwal, tahunAkhir),
-    sprintf("Rerata Laju Pertumbuhan Sektor LAS (CAGR %d–%d)", tahunAwal, tahunAkhir),
-    sprintf("Rerata Laju Pertumbuhan Sektor Lainnya (CAGR %d–%d)", tahunAwal, tahunAkhir)
+  Indicator = c(
+    sprintf("Total BAU GRP in %d", tahunAwal),
+    sprintf("Total BAU GRP in %d", tahunAkhir),
+    sprintf("Cumulative Growth (%d–%d)", tahunAwal, tahunAkhir),
+    sprintf("Average Annual Growth Rate (CAGR %d–%d)", tahunAwal, tahunAkhir),
+    sprintf("LAS Sectors Growth Rate (CAGR %d–%d)", tahunAwal, tahunAkhir),
+    sprintf("Other Sectors Growth Rate (CAGR %d–%d)", tahunAwal, tahunAkhir)
   ),
-  Nilai = c(
-    sprintf("Rp %s Juta", comma(round(pdrb_awal, 2))),
-    sprintf("Rp %s Juta", comma(round(pdrb_akhir, 2))),
+  Value = c(
+    sprintf("PGK %s Million", comma(round(pdrb_awal, 2))),
+    sprintf("PGK %s Million", comma(round(pdrb_akhir, 2))),
     sprintf("+%.2f%%", ((pdrb_akhir - pdrb_awal) / pdrb_awal) * 100),
-    sprintf("%.2f%% per tahun", cagr_bau),
-    sprintf("%.2f%% per tahun", calc_cagr(res_BAU$LAS)),
-    sprintf("%.2f%% per tahun", calc_cagr(res_BAU$Lainnya))
+    sprintf("%.2f%% per year", cagr_bau),
+    sprintf("%.2f%% per year", calc_cagr(res_BAU$LAS)),
+    sprintf("%.2f%% per year", calc_cagr(res_BAU$Other))
   )
 )
 
 knitr::kable(
   df_ringkasan_bau,
   row.names = FALSE,
-  caption = sprintf("Ringkasan Indikator Proyeksi PDRB BAU (%d–%d)", tahunAwal, tahunAkhir),
-  col.names = c("Parameter Indikator", "Nilai Simulasi BAU"),
+  caption = sprintf("Summary of BAU GRP Indicators for Oro Province (%d–%d)", tahunAwal, tahunAkhir),
+  col.names = c("Indicator Parameter", "BAU Simulation Value"),
   align = c("l", "r")
 ) %>%
   kableExtra::kable_styling(
