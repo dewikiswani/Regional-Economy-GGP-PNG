@@ -67,6 +67,7 @@ if (!requireNamespace("ggrepel", quietly = TRUE)) {
 library(ggrepel)
 
 
+
 # Data Ekonomi Provinsi
 # Baca Matriks Transaksi Inter-Industri Provinsi (Z_prov) 
 io <- read.csv("io png oro.csv", 
@@ -109,20 +110,20 @@ BAULahan <- read_excel("BAU_Lahan.xlsx",
 # pdrb_decay <- read.csv2("Bukecap_ADHK_PDRB_TimeSeries.csv", dec = ",", check.names = FALSE)
  
 # Penyesuaian nama Input kolom yang dibutuhkan
-jml_sektor <- 41
+jml_sektor <- nrow(DeskripsiSektor) # Otomatis membaca 33 atau 34 sektor
 n_tahunSimulasi <- 27
 tahunAwal <- 2023
 tahunAkhir <- 2050
-kolom_Sektor <- paste0("X", 1:41) # Membuat daftar nama kolom x1, x2, ..., x66 secara otomatis
+kolom_Sektor <- paste0("X", 1:jml_sektor) # Membuat daftar nama kolom x1, x2, ..., x66 secara otomatis
 namaSektor <- as.vector(io[1:jml_sektor,"Nama.Sektor"])
 kolom_FD <- paste0("X309") # houshold: import dijumlahkan 
 kolom_TOutput <- "X700"
 
-baris_impor <- 52  # Baris Impor / Input Luar Daerah (ambil kolom import dan di trasnpose lalu di kalikan positf )
-baris_upah  <- 52  # Baris Kompensasi Tenaga Kerja / Gaji & Upah (42:44)
-baris_surplus <- 53 # baris surplus usaha bruto (oro: 45 dan 46)
-baris_totInputPrimer <- 54 # oro:42:49
-baris_totInput <- 50
+baris_impor <- 44# Baris Impor / Input Luar Daerah (ambil kolom import dan di trasnpose lalu di kalikan positf )
+baris_upah  <- 45  # Baris Kompensasi Tenaga Kerja / Gaji & Upah (42:44)
+baris_surplus <- 46 # baris surplus usaha bruto (oro: 45 dan 46)
+baris_totInputPrimer <- 47 # oro:42:49
+baris_totInput <- 43
 # propLuasPesisir <- 0.144
 
 ```
@@ -136,48 +137,48 @@ matrixA <- io %>%
 
 Z_prov <- data.matrix(matrixA)
 
-# Total Output Sektor di Provinsi (X_prov)
-X_prov <- as.numeric(io[baris_totInput,kolom_Sektor])
-X_prov[is.nan(X_prov)] <- 0 #jika Nan diganti 0
-
-# Matriks Koefisien Teknis Provinsi (A_prov = Z_prov / X_prov)
-A_prov <- sweep(Z_prov, 2, X_prov, FUN = "/")
-A_prov[is.nan(A_prov)] <- 0 #jika Nan diganti 0
-
-# Menciptakan matriks identitas (I) berukuran n x n
-nA_prov <- nrow(A_prov)
-matrixI <- diag(nA_prov)
-
-# Menghitung (I - A) dan mencari Invers Leontief: (I - A)^(-1)
-I_minus_A <- matrixI - A_prov
-Leontief_Inverse <- solve(I_minus_A)
-
-
-# # 1. Gunakan TOTAL OUTPUT (X700) sebagai pembagi matriks A, bukan total input
-# X_prov <- as.numeric(io[1:jml_sektor, kolom_TOutput]) # Mengambil kolom X700 = total output
-# X_prov[is.na(X_prov) | is.nan(X_prov)] <- 0
+# # Total Output Sektor di Provinsi (X_prov)
+# X_prov <- as.numeric(io[baris_totInput,kolom_Sektor])
+# X_prov[is.nan(X_prov)] <- 0 #jika Nan diganti 0
 # 
-# # 2. Matriks Koefisien Teknis A_prov (Z / Total Output)
-# A_prov <- matrix(0, nrow = jml_sektor, ncol = jml_sektor)
+# # Matriks Koefisien Teknis Provinsi (A_prov = Z_prov / X_prov)
+# A_prov <- sweep(Z_prov, 2, X_prov, FUN = "/")
+# A_prov[is.nan(A_prov)] <- 0 #jika Nan diganti 0
 # 
-# for (j in 1:jml_sektor) {
-#   if (X_prov[j] > 0) {
-#     A_prov[, j] <- Z_prov[, j] / X_prov[j]
-#   } else {
-#     A_prov[, j] <- 0
-#   }
-# }
-# 
-# # Pengaman jika ada nilai tak terhingga / NaN
-# A_prov[is.na(A_prov) | is.nan(A_prov) | is.infinite(A_prov)] <- 0
-# 
-# # 3. Hitung Invers Leontief (I - A)^-1
+# # Menciptakan matriks identitas (I) berukuran n x n
 # nA_prov <- nrow(A_prov)
 # matrixI <- diag(nA_prov)
-# I_minus_A <- matrixI - A_prov
 # 
+# # Menghitung (I - A) dan mencari Invers Leontief: (I - A)^(-1)
+# I_minus_A <- matrixI - A_prov
 # Leontief_Inverse <- solve(I_minus_A)
-# Leontief_Inverse[is.na(Leontief_Inverse) | is.infinite(Leontief_Inverse)] <- 0
+
+
+# 1. Gunakan TOTAL OUTPUT (X700) sebagai pembagi matriks A, bukan total input
+X_prov <- as.numeric(io[1:jml_sektor, kolom_TOutput]) # Mengambil kolom X700 = total output
+X_prov[is.na(X_prov) | is.nan(X_prov)] <- 0
+
+# 2. Matriks Koefisien Teknis A_prov (Z / Total Output)
+A_prov <- matrix(0, nrow = jml_sektor, ncol = jml_sektor)
+
+for (j in 1:jml_sektor) {
+  if (X_prov[j] > 0) {
+    A_prov[, j] <- Z_prov[, j] / X_prov[j]
+  } else {
+    A_prov[, j] <- 0
+  }
+}
+
+# Pengaman jika ada nilai tak terhingga / NaN
+A_prov[is.na(A_prov) | is.nan(A_prov) | is.infinite(A_prov)] <- 0
+
+# 3. Hitung Invers Leontief (I - A)^-1
+nA_prov <- nrow(A_prov)
+matrixI <- diag(nA_prov)
+I_minus_A <- matrixI - A_prov
+
+Leontief_Inverse <- solve(I_minus_A)
+Leontief_Inverse[is.na(Leontief_Inverse) | is.infinite(Leontief_Inverse)] <- 0
 
 #kolom final demand
 fd <- io[1:jml_sektor,kolom_FD]
@@ -311,8 +312,7 @@ print(p_linkagePendek)
 
 # 1. PERSIAPAN DATA INPUT PRIMER & PENGAMAN DIVISION BY ZERO
 # A. Total Output (X_prov)
-X_prov <- as.numeric(io[baris_totInput, kolom_Sektor])
-X_prov[is.na(X_prov) | is.nan(X_prov)] <- 0
+X_prov <- X_prov
 
 # B. Koefisien Pendapatan Langsung (h)
 upah_gaji <- as.numeric(io[baris_upah, kolom_Sektor])
@@ -976,490 +976,115 @@ print(p_employment_proj)
 
 ```
 
-## Gross Regional Product (GRP) 2019 and 2023
+## Gross Regional Product (GRP) PNG 2019 and 2023
 
-```{r, echo = FALSE, warning=FALSE}
+
+
+```{r grp-2019-2023-excel, echo = FALSE, warning = FALSE, message = FALSE}
 # ==============================================================================
-# REKONSTRUKSI GRP TAHUNAN (2019 - 2023) BERDASARKAN CAGR PER SEKTOR
+# PARAMETER UTAMA MODEL & STRUKTUR EXCEL (DIKUMPULKAN DI BARIS AWAL)
+# ==============================================================================
+# 1. Parameter Model Simulasi
+jml_sektor_nat           <- 40                   # Jumlah sektor nasional PNG
+tahun_awal_nat           <- 2019                 # Tahun basis awal
+tahun_akhir_nat          <- 2023                 # Tahun basis akhir
+n_yrs_nat                <- tahun_akhir_nat - tahun_awal_nat # Rentang periode (4 tahun)
+
+# 2. Parameter Struktur Kolom & Baris File Excel Input
+baris_totInputPrimer_nat <- 50                   # Indeks baris Total Input Primer / Value Added
+kolom_mulai_sektor_nat   <- 2                    # Indeks kolom pertama sektor (Kolom F = 6)
+kolom_akhir_sektor_nat   <- kolom_mulai_sektor_nat + jml_sektor_nat - 1 # Kolom sektor terakhir (45)
+kolom_nama_sektor_nat    <- "Nama Sektor"        # Nama header kolom nama sektor
+
+# 3. Parameter File Output Excel
+file_output_excel        <- "PNG_National_GDP_TimeSeries_2019_2023_40Sectors.xlsx"
+
+file_io_2019 <- "io_png_2019.xlsx"
+file_io_2023 <- "io_png_2023.xlsx"
+sheet_name   <- 1
+
+# ==============================================================================
+# EXECUTION SCRIPT
 # ==============================================================================
 
-# 1. BACA FILE IO TAHUN 2019
-io_2019 <- read.csv("io_png_oro_2019.csv", 
-                    header = TRUE, 
-                    sep = ",", 
-                    stringsAsFactors = FALSE)
+# 1. BACA FILE INPUT EXCEL IO NASIONAL 2019 DAN 2023
+io_png_2019 <- read_excel(file_io_2019, sheet = sheet_name, col_names = TRUE)
+io_png_2023 <- read_excel(file_io_2023, sheet = sheet_name, col_names = TRUE)
 
-# 2. EKSTRAK GRP SEKTORAL 2019 DAN 2023
-grp_2019_sectoral <- as.numeric(io_2019[baris_totInputPrimer, kolom_Sektor])
-grp_2019_sectoral[is.na(grp_2019_sectoral)] <- 0
+# 2. EKSTRAK NAMA SEKTOR & DATA GDP SEKTORAL 2019 DAN 2023
+nama_sektor_nat <- as.vector(io_png_2023[1:jml_sektor_nat, kolom_nama_sektor_nat][[1]])
 
-grp_2023_sectoral <- as.numeric(pdrb_BAU[, 1]) # Baseline simulasi 2023
-grp_2023_sectoral[is.na(grp_2023_sectoral)] <- 0
+gdp_2019_raw <- as.numeric(io_png_2019[baris_totInputPrimer_nat, kolom_mulai_sektor_nat:kolom_akhir_sektor_nat])
+gdp_2023_raw <- as.numeric(io_png_2023[baris_totInputPrimer_nat, kolom_mulai_sektor_nat:kolom_akhir_sektor_nat])
 
-# 3. HITUNG CAGR TAHUNAN (PERIODE 4 TAHUN: 2019 -> 2023)
-n_yrs <- 2023 - 2019
-cagr_annual <- ifelse(
-  grp_2019_sectoral > 0 & grp_2023_sectoral > 0,
-  (grp_2023_sectoral / grp_2019_sectoral)^(1 / n_yrs) - 1,
+# Cleaning dari nilai NA / NaN / Infinite
+gdp_2019_sectoral <- ifelse(is.na(gdp_2019_raw) | is.nan(gdp_2019_raw), 0, gdp_2019_raw)
+gdp_2023_sectoral <- ifelse(is.na(gdp_2023_raw) | is.nan(gdp_2023_raw), 0, gdp_2023_raw)
+
+# 3. KALKULASI ANNUAL GROWTH (CAGR) & INTERPOLASI TAHUNAN (2020-2022)
+cagr_annual_nat <- ifelse(
+  gdp_2019_sectoral > 0 & gdp_2023_sectoral > 0,
+  (gdp_2023_sectoral / gdp_2019_sectoral)^(1 / n_yrs_nat) - 1,
   0
 )
+cagr_annual_nat[is.na(cagr_annual_nat) | is.infinite(cagr_annual_nat)] <- 0
 
-# 4. ESTIMASI NILAI GRP TAHUN 2020, 2021, DAN 2022
-grp_2020_sectoral <- grp_2019_sectoral * (1 + cagr_annual)
-grp_2021_sectoral <- grp_2019_sectoral * ((1 + cagr_annual)^2)
-grp_2022_sectoral <- grp_2019_sectoral * ((1 + cagr_annual)^3)
+# Interpolasi Nilai GDP Tahun 2020, 2021, dan 2022
+gdp_2020_sectoral <- gdp_2019_sectoral * (1 + cagr_annual_nat)
+gdp_2021_sectoral <- gdp_2019_sectoral * ((1 + cagr_annual_nat)^2)
+gdp_2022_sectoral <- gdp_2019_sectoral * ((1 + cagr_annual_nat)^3)
 
-# 5. SUSUN DATA FRAME KESELURUHAN (2019–2023)
-df_grp_timeseries <- data.frame(
-  No = 1:jml_sektor,
-  Sector_ID = kolom_Sektor,
-  Sector_Name = namaSektor,
-  `2019` = round(grp_2019_sectoral, 4),
-  `2020` = round(grp_2020_sectoral, 4),
-  `2021` = round(grp_2021_sectoral, 4),
-  `2022` = round(grp_2022_sectoral, 4),
-  `2023` = round(grp_2023_sectoral, 4),
-  `Annual_CAGR_Percent` = round(cagr_annual * 100, 2),
+# 4. PEMBENTUKAN DATA FRAME TIMESERIES NASIONAL (2019–2023)
+df_gdp_nat_timeseries <- data.frame(
+  No = 1:jml_sektor_nat,
+  Sector_Code = paste0("S", 1:jml_sektor_nat),
+  Sector_Name = nama_sektor_nat,
+  `2019` = round(gdp_2019_sectoral, 2),
+  `2020` = round(gdp_2020_sectoral, 2),
+  `2021` = round(gdp_2021_sectoral, 2),
+  `2022` = round(gdp_2022_sectoral, 2),
+  `2023` = round(gdp_2023_sectoral, 2),
+  `Annual_CAGR_Percent` = round(cagr_annual_nat * 100, 2),
   check.names = FALSE
 )
 
-# 6. EKSPOR KE FILE EXCEL (.XLSX)
-write_xlsx(df_grp_timeseries, "GRP_TimeSeries_Sectoral_Oro_2019_2023.xlsx")
+# Akumulasi Total GDP Nasional
+tot_19   <- sum(gdp_2019_sectoral)
+tot_23   <- sum(gdp_2023_sectoral)
+tot_cagr <- ifelse(tot_19 > 0, ((tot_23 / tot_19)^(1 / n_yrs_nat) - 1) * 100, 0)
 
-# 7. TAMPILKAN TABEL PADA LAPORAN QUARTO
+row_total_nat <- data.frame(
+  No = NA,
+  Sector_Code = "TOTAL",
+  Sector_Name = "Total Gross Domestic Product (PNG)",
+  `2019` = round(tot_19, 2),
+  `2020` = round(sum(gdp_2020_sectoral), 2),
+  `2021` = round(sum(gdp_2021_sectoral), 2),
+  `2022` = round(sum(gdp_2022_sectoral), 2),
+  `2023` = round(tot_23, 2),
+  `Annual_CAGR_Percent` = round(tot_cagr, 2),
+  check.names = FALSE
+)
+
+df_gdp_nat_final <- rbind(df_gdp_nat_timeseries, row_total_nat)
+
+# 5. EXPORT HASIL KE EXCEL & TAMPILKAN TABEL HTML
+write_xlsx(df_gdp_nat_final, file_output_excel)
+
 knitr::kable(
-  df_grp_timeseries,
+  df_gdp_nat_final,
   row.names = FALSE,
-  caption = "Sectoral Gross Regional Product (GRP) Time Series for Oro Province (2019–2023) (Million PGK)",
+  caption = sprintf("National Sectoral Gross Domestic Product (GDP) Time Series for Papua New Guinea (%d–%d) (Million PGK)", tahun_awal_nat, tahun_akhir_nat),
   digits = 2,
   format.args = list(big.mark = ","),
-  col.names = c("No", "Sector ID", "Sector Name", "2019", "2020", "2021", "2022", "2023", "Annual Growth (%/year)"),
+  col.names = c("No", "Sector Code", "Sector Name", "2019", "2020", "2021", "2022", "2023", "Annual Growth (%/year)"),
   align = c("c", "c", "l", "r", "r", "r", "r", "r", "r")
 ) %>%
   kableExtra::kable_styling(
     bootstrap_options = c("striped", "hover", "condensed"),
     full_width = TRUE,
     position = "center"
-  )
-
-
-```
-
-## GRP Projection with Capped Growth Rate
-
-```{r, echo = FALSE, warning=FALSE}
-# ==============================================================================
-# 1. PARAMETERS & UNCONSTRAINED RATE CLEANING (WITH CAPPING)
-# ==============================================================================
-tahunAwal  <- tahunAwal
-tahunAkhir <- tahunAkhir
-n_tahun    <- tahunAkhir - tahunAwal  # 27 years (2023 to 2050)
-
-# Extract raw unconstrained growth rates from DeskripsiSektor
-rate_raw <- as.numeric(DeskripsiSektor$RateUnconstrained)
-rate_raw[is.na(rate_raw) | is.nan(rate_raw)] <- 0
-
-# Format Check: Convert percentage whole numbers (e.g., 5.5) to decimals (0.055) if needed
-rate_clean <- ifelse(abs(rate_raw) > 1, rate_raw / 100, rate_raw)
-
-# Apply Capping Mechanism (+6% max, -2% min)
-max_growth_cap <- 0.06 
-min_growth_cap <- -0.02
-rate_capped    <- pmin(pmax(rate_clean, min_growth_cap), max_growth_cap)
-
-# ==============================================================================
-# 2. FINAL DEMAND (FD) SIMULATION FOR UNCONSTRAINED SECTORS
-# ==============================================================================
-# Matrix to store 27 years simulation steps (2024 - 2050)
-all_steps_uncon <- matrix(NA, nrow = jml_sektor, ncol = n_tahunSimulasi)
-current_fd      <- as.numeric(fd)
-
-# Vector tagging for unconstrained sectors
-v_unconstrained <- as.numeric(Unconstrained)
-v_unconstrained[is.na(v_unconstrained)] <- 0
-
-for (i in 1:n_tahunSimulasi) {
-  # Apply growth rate only to unconstrained sectors
-  current_fd      <- current_fd * (1 + (rate_capped * v_unconstrained))
-  all_steps_uncon[, i] <- current_fd
-}
-
-colnames(all_steps_uncon) <- paste0("FD", (tahunAwal + 1):tahunAkhir)
-
-# Combine baseline 2023 FD with projected FD (2024-2050)
-fd_BAU_uncon <- cbind(as.numeric(fd) * v_unconstrained, all_steps_uncon)
-colnames(fd_BAU_uncon)[1] <- paste0("FD", tahunAwal)
-
-# ==============================================================================
-# 3. FINAL DEMAND (FD) SIMULATION FOR CONSTRAINED (LAND-BASED) SECTORS
-# ==============================================================================
-# Extract land-use area for BAU (2023-2050)
-BAUArea <- as.matrix(BAULahan[, (ncol(BAULahan) - n_tahunSimulasi):ncol(BAULahan)])
-storage.mode(BAUArea) <- "double"
-
-v_constrained <- as.numeric(Constrained)
-v_constrained[is.na(v_constrained)] <- 0
-
-# Calculate constrained FD: Land Area %*% LDM * LPC
-fd_BAU_con <- matrix(NA, nrow = nrow(LDM_matrix), ncol = ncol(BAUArea))
-
-for (i in 1:ncol(BAUArea)) {
-  r_sums   <- as.vector(LDM_matrix %*% BAUArea[, i])
-  step_res <- r_sums * as.numeric(LPC) * v_constrained
-  step_res[is.na(step_res) | is.nan(step_res) | is.infinite(step_res)] <- 0
-  fd_BAU_con[, i] <- step_res
-}
-
-colnames(fd_BAU_con) <- colnames(BAUArea)
-
-# ==============================================================================
-# 4. TOTAL GRP CALCULATION (UNCONSTRAINED + CONSTRAINED)
-# ==============================================================================
-# Combine FD from both constrained and unconstrained sectors
-fd_BAU_total <- fd_BAU_con + fd_BAU_uncon
-
-# Calculate GRP = Leontief Inverse %*% FD * NTB Proportion
-pdrb_BAU <- matrix(NA, nrow = nrow(fd_BAU_total), ncol = ncol(fd_BAU_total))
-
-for (i in 1:ncol(fd_BAU_total)) {
-  r_sums   <- as.vector(Leontief_Inverse %*% fd_BAU_total[, i])
-  step_res <- r_sums * as.numeric(ntbProp)
-  step_res[is.na(step_res) | is.nan(step_res) | is.infinite(step_res)] <- 0
-  pdrb_BAU[, i] <- step_res
-}
-
-colnames(pdrb_BAU) <- colnames(BAUArea)
-
-# Aggregate total regional GRP
-pdrb_BAU_total <- colSums(pdrb_BAU)
-years          <- tahunAwal:tahunAkhir
-
-plot_df <- data.frame(
-  Year     = years,
-  pdrb_BAU = pdrb_BAU_total
-)
-
-# Export GRP Simulation Results to Excel
-write_xlsx(plot_df, "Final_GRP_BAU_Capped_Oro_2023_2050.xlsx")
-
-# ==============================================================================
-# 5. LINE CHART PROJECTION FOR BAU GRP WITH CALLOUT LABELS
-# ==============================================================================
-val_awal  <- plot_df$pdrb_BAU[plot_df$Year == tahunAwal]
-val_akhir <- plot_df$pdrb_BAU[plot_df$Year == tahunAkhir]
-
-lbl_awal  <- comma(round(val_awal, 2))
-lbl_akhir <- comma(round(val_akhir, 2))
-
-y_range  <- max(plot_df$pdrb_BAU) - min(plot_df$pdrb_BAU)
-y_offset <- y_range * 0.12
-
-hasil_simulasi_label <- ggplot(plot_df, aes(x = Year, y = pdrb_BAU)) +
-  # Line & Point for BAU Scenario
-  geom_line(color = "#D95F02", linewidth = 1.2) +
-  geom_point(color = "#D95F02", size = 2.5) +
-
-  # Callout Pointer Lines
-  annotate("segment", x = tahunAwal + 0.2, xend = tahunAwal + 2.8, y = val_awal, yend = val_awal + y_offset, color = "gray40", linewidth = 0.6) +
-  annotate("segment", x = tahunAkhir - 0.2, xend = tahunAkhir - 2.8, y = val_akhir, yend = val_akhir - y_offset, color = "gray40", linewidth = 0.6) +
-
-  # Excel-style Label Boxes
-  annotate("label", x = tahunAwal + 3.8, y = val_awal + y_offset * 1.05, label = paste0(tahunAwal, ": PGK ", lbl_awal, " M"),
-           fontface = "bold", fill = "#EAEAEA", color = "black", size = 3.8, label.padding = unit(0.4, "lines")) +
-  annotate("label", x = tahunAkhir - 3.8, y = val_akhir - y_offset * 1.05, label = paste0(tahunAkhir, ": PGK ", lbl_akhir, " M"),
-           fontface = "bold", fill = "#EAEAEA", color = "black", size = 3.8, label.padding = unit(0.4, "lines")) +
-
-  # Axis Scale & Formatting
-  scale_x_continuous(breaks = seq(tahunAwal, tahunAkhir, by = 5)) +
-  scale_y_continuous(labels = comma_format(), expand = expansion(mult = c(0.05, 0.2))) +
-
-  # Labels & Theme
-  labs(
-    title = sprintf("GRP Projection for Oro Province: BAU Scenario (%d–%d)", tahunAwal, tahunAkhir),
-    subtitle = "Applied Growth Cap (+6.0% Max, -2.0% Min per year for unconstrained sectors)",
-    x = "Year",
-    y = "Total GRP (Million PGK)"
-  ) +
-  theme_minimal(base_size = 13) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
-    plot.subtitle = element_text(hjust = 0.5, size = 10, color = "gray30"),
-    panel.grid.minor = element_blank(),
-    axis.text = element_text(color = "black")
-  )
-
-# Display Line Chart
-print(hasil_simulasi_label)
-
-# ==============================================================================
-# 6. ANNUAL AVERAGE GROWTH RATE (CAGR) & SUMMARY TABLE
-# ==============================================================================
-v_las     <- as.numeric(DeskripsiSektor$Constrained)
-v_las[is.na(v_las)] <- 0
-v_lainnya <- 1 - v_las
-
-pdrb_las     <- colSums(pdrb_BAU[v_las == 1, , drop = FALSE])
-pdrb_lainnya <- colSums(pdrb_BAU[v_lainnya == 1, , drop = FALSE])
-pdrb_total   <- colSums(pdrb_BAU)
-
-calc_cagr_val <- function(val_start, val_end, n_yrs = n_tahun) {
-  cagr <- ((val_end / val_start)^(1 / n_yrs) - 1) * 100
-  return(as.numeric(cagr))
-}
-
-cagr_overall <- calc_cagr_val(pdrb_total[1], pdrb_total[length(pdrb_total)])
-cagr_las     <- calc_cagr_val(pdrb_las[1], pdrb_las[length(pdrb_las)])
-cagr_other   <- calc_cagr_val(pdrb_lainnya[1], pdrb_lainnya[length(pdrb_lainnya)])
-
-df_ringkasan_bau <- data.frame(
-  Indicator = c(
-    sprintf("Total BAU GRP in %d", tahunAwal),
-    sprintf("Total BAU GRP in %d", tahunAkhir),
-    sprintf("Cumulative Growth (%d–%d)", tahunAwal, tahunAkhir),
-    sprintf("Average Annual Growth Rate (CAGR %d–%d)", tahunAwal, tahunAkhir),
-    sprintf("LAS Sectors Growth Rate (CAGR %d–%d)", tahunAwal, tahunAkhir),
-    sprintf("Other Sectors Growth Rate (CAGR %d–%d)", tahunAwal, tahunAkhir)
-  ),
-  Value = c(
-    sprintf("PGK %s Million", comma(round(pdrb_total[1], 2))),
-    sprintf("PGK %s Million", comma(round(pdrb_total[length(pdrb_total)], 2))),
-    sprintf("+%.2f%%", ((pdrb_total[length(pdrb_total)] - pdrb_total[1]) / pdrb_total[1]) * 100),
-    sprintf("%.2f%% per year", cagr_overall),
-    sprintf("%.2f%% per year", cagr_las),
-    sprintf("%.2f%% per year", cagr_other)
-  )
-)
-
-knitr::kable(
-  df_ringkasan_bau,
-  row.names = FALSE,
-  caption = sprintf("Summary of Capped BAU GRP Indicators for Oro Province (%d–%d)", tahunAwal, tahunAkhir),
-  col.names = c("Indicator Parameter", "BAU Simulation Value"),
-  align = c("l", "r")
-) %>%
-  kableExtra::kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed"),
-    full_width = FALSE,
-    position = "center"
   ) %>%
-  kableExtra::row_spec(0, bold = TRUE, extra_css = "border-top: 2px solid #ccc; border-bottom: 2px solid #ccc;") %>%
-  kableExtra::row_spec(4, bold = TRUE, background = "#EAEAEA")
-
-# ==============================================================================
-# BAR CHART: AVERAGE ANNUAL GROWTH RATE (CAGR 2023–2050)
-# ==============================================================================
-
-# 1. Buat Data Frame CAGR untuk 3 Kelompok Sektor
-cagr_data_bau <- data.frame(
-  Group = factor(
-    c("LAS Sectors", "Other Sectors", "Overall Economy"),
-    levels = c("LAS Sectors", "Other Sectors", "Overall Economy")
-  ),
-  Growth = c(cagr_las, cagr_other, cagr_overall)
-)
-
-# 2. Render Bar Chart Menggunakan ggplot2
-p_bar_growth_bau <- ggplot(cagr_data_bau, aes(x = Group, y = Growth, fill = Group)) +
-  # --- Batang Bar ---
-  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) +
-  
-  # --- Label Persentase di Atas Batang ---
-  geom_text(
-    aes(label = sprintf("%.2f%%", Growth)),
-    vjust = -0.6,
-    fontface = "bold",
-    size = 4.2,
-    color = "black"
-  ) +
-  
-  # --- Skala Sumbu Y dan Warna Asli Excel/Default ---
-  scale_y_continuous(
-    labels = function(x) paste0(format(x, nsmall = 1), "%"),
-    expand = expansion(mult = c(0, 0.2))
-  ) +
-  scale_fill_manual(
-    values = c(
-      "LAS Sectors"     = "#E69F00",  # Oranye Kecokelatan
-      "Other Sectors"   = "#56B4E9",  # Biru Cerah
-      "Overall Economy" = "#4178BE"   # Biru Tua
-    )
-  ) +
-  
-  # --- Judul dan Label Sumbu ---
-  labs(
-    title = sprintf("Average Annual Growth Rate (CAGR %d–%d): BAU Scenario", tahunAwal, tahunAkhir),
-    x = NULL,
-    y = "Annual Growth Rate (%)"
-  ) +
-  
-  # --- Tema Minimalis Eksklusif ---
-  theme_minimal(base_size = 13) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5, size = 14, color = "gray20"),
-    axis.title.y = element_text(color = "gray30", size = 11),
-    axis.text.x = element_text(face = "bold", size = 11, color = "gray20"),
-    axis.text.y = element_text(color = "gray30"),
-    panel.grid.minor = element_blank(),
-    panel.grid.major.x = element_blank() # Menghilangkan grid vertikal
-  )
-
-# 3. Tampilkan Grafik
-print(p_bar_growth_bau)
-
-
-
-```
-
-## Income*
-```{r, echo = FALSE, warning=FALSE}
-# ==============================================================================
-# 1. HOUSEHOLD INCOME PROJECTION (2023–2050)
-# ==============================================================================
-# Proyeksi pendapatan dihitung menggunakan proporsi kompensasi tenaga kerja (Labor Compensation) terhadap total GRP basis 2023.
-
-
-# Calculate Household Income Proportion from 2023 IO Data
-upah_gaji_png <- as.numeric(io[baris_upah, kolom_Sektor])
-upah_gaji_png[is.na(upah_gaji_png)] <- 0
-prop_income_png <- sum(upah_gaji_png) / sum(pdrb_IO)
-
-# Income Projection Matrix (Million PGK)
-income_BAU_png <- plot_df$pdrb_BAU * prop_income_png
-
-df_income_projection <- data.frame(
-  Year = plot_df$Year,
-  Total_GRP_PGK_M = round(plot_df$pdrb_BAU, 2),
-  Household_Income_PGK_M = round(income_BAU_png, 2)
-)
-
-# Export Income Projection to Excel
-write_xlsx(df_income_projection, "Income_Projection_BAU_Oro_2023_2050.xlsx")
-
-# Line Chart Household Income
-p_income_proj <- ggplot(df_income_projection, aes(x = Year, y = Household_Income_PGK_M)) +
-  geom_line(color = "#2E7D32", linewidth = 1.2) +
-  geom_point(color = "#2E7D32", size = 2.5) +
-  scale_x_continuous(breaks = seq(tahunAwal, tahunAkhir, by = 5)) +
-  scale_y_continuous(labels = comma_format()) +
-  labs(
-    title = sprintf("Household Income Projection for Oro Province (%d–%d)", tahunAwal, tahunAkhir),
-    x = "Year",
-    y = "Total Income (Million PGK)"
-  ) +
-  theme_minimal(base_size = 13) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    panel.grid.minor = element_blank()
-  )
-
-print(p_income_proj)
-
-```
-
-
-
-
-## Intersectoral Land Linkages*
-
-```{r, echo = FALSE, warning=FALSE}
-# ==============================================================================
-# 3. INTERSECTORAL LAND LINKAGES ANALYSIS
-# ==============================================================================
-# Mengukur rata-rata Indeks Total Forward Linkage (ITFL / Sensitivity Index) khusus untuk sektor-sektor constrained (sektor berbasis lahan/SDA) untuk melihat sejauh mana sektor lahan bertindak sebagai pemasok input bagi seluruh struktur ekonomi regional.
-
-
-# Extract Constrained Sector Tagging Vector (1 = Land-based, 0 = Non-land)
-v_constrained_png <- as.numeric(DeskripsiSektor$Constrained)
-v_constrained_png[is.na(v_constrained_png)] <- 0
-
-# Calculate Constrained Land-based Sectors ITFL Average
-itfl_land_sectors <- tabel_multiplier_sektoral$ITFL * v_constrained_png
-mean_itfl_land_bau <- mean(itfl_land_sectors[v_constrained_png == 1], na.rm = TRUE)
-
-df_land_linkages_summary <- data.frame(
-  Indicator = c(
-    "Total Land-Based Sectors",
-    "Average Total Forward Linkage (ITFL) - Land Sectors",
-    "Linkage Status / Role in Regional Supply Chain"
-  ),
-  Value = c(
-    as.character(sum(v_constrained_png)),
-    sprintf("%.4f", mean_itfl_land_bau),
-    ifelse(mean_itfl_land_bau > 1, "Strong Forward Supply Driver", "Primary Material Supplier / Moderate Linkage")
-  )
-)
-
-# Export Summary to Excel
-write_xlsx(df_land_linkages_summary, "Land_Linkages_Summary_Oro_2023.xlsx")
-
-# Display Summary Table in HTML Output
-knitr::kable(
-  df_land_linkages_summary,
-  row.names = FALSE,
-  caption = "Intersectoral Land Linkages Analysis for Oro Province (2023 Baseline)",
-  col.names = c("Parameter", "Value"),
-  align = c("l", "r")
-) %>%
-  kableExtra::kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed"),
-    full_width = FALSE,
-    position = "center"
-  )
-
-```
-
-
-
-## Employment Absorption*
-
-
-```{r, echo = FALSE, warning=FALSE}
-# ==============================================================================
-# 2. EMPLOYMENT ABSORPTION PROJECTION (2023–2050)
-# ==============================================================================
-# Proyeksi serapan tenaga kerja dihitung dari penambahan tenaga kerja tahunan berdasarkan selisih pertumbuhan GRP yang dikalikan dengan Average Labor Multiplier basis 2023.
-
-# Average Labor Multiplier (Person per Million PGK)
-mean_lab_multiplier_png <- mean(tabel_multiplier_sektoral$Labour_Effect, na.rm = TRUE)
-
-# Baseline Labor 2023
-TK_baseline_2023 <- sum(DeskripsiSektor$TenagaKerja, na.rm = TRUE)
-
-# Calculate Annual GRP Differences
-grp_diff <- c(0, diff(plot_df$pdrb_BAU))
-
-# Calculate Additional Jobs per Year and Accumulate
-additional_jobs <- grp_diff * mean_lab_multiplier_png
-employment_proj <- TK_baseline_2023 + cumsum(additional_jobs)
-
-df_employment_projection <- data.frame(
-  Year = plot_df$Year,
-  Total_GRP_PGK_M = round(plot_df$pdrb_BAU, 2),
-  Annual_GRP_Diff = round(grp_diff, 2),
-  Projected_Employment_Persons = round(employment_proj, 0)
-)
-
-# Export Employment Projection to Excel
-write_xlsx(df_employment_projection, "Employment_Projection_BAU_Oro_2023_2050.xlsx")
-
-# Line Chart Employment Absorption
-p_employment_proj <- ggplot(df_employment_projection, aes(x = Year, y = Projected_Employment_Persons)) +
-  geom_line(color = "#1565C0", linewidth = 1.2) +
-  geom_point(color = "#1565C0", size = 2.5) +
-  scale_x_continuous(breaks = seq(tahunAwal, tahunAkhir, by = 5)) +
-  scale_y_continuous(labels = comma_format()) +
-  labs(
-    title = sprintf("Employment Absorption Projection for Oro Province (%d–%d)", tahunAwal, tahunAkhir),
-    x = "Year",
-    y = "Total Jobs (Persons)"
-  ) +
-  theme_minimal(base_size = 13) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    panel.grid.minor = element_blank()
-  )
-
-print(p_employment_proj)
-
+  kableExtra::row_spec(nrow(df_gdp_nat_final), bold = TRUE, background = "#EAEAEA")
 
 ```
