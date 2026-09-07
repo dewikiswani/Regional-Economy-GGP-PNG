@@ -138,11 +138,11 @@ Z_prov <- data.matrix(matrixA)
 
 # Total Output Sektor di Provinsi (X_prov)
 X_prov <- as.numeric(io[baris_totInput,kolom_Sektor])
-X_prov[is.nan(X_prov)] <- 0 #jika Nan diganti 0 
+X_prov[is.nan(X_prov)] <- 0 #jika Nan diganti 0
 
 # Matriks Koefisien Teknis Provinsi (A_prov = Z_prov / X_prov)
 A_prov <- sweep(Z_prov, 2, X_prov, FUN = "/")
-A_prov[is.nan(A_prov)] <- 0 #jika Nan diganti 0 
+A_prov[is.nan(A_prov)] <- 0 #jika Nan diganti 0
 
 # Menciptakan matriks identitas (I) berukuran n x n
 nA_prov <- nrow(A_prov)
@@ -151,6 +151,33 @@ matrixI <- diag(nA_prov)
 # Menghitung (I - A) dan mencari Invers Leontief: (I - A)^(-1)
 I_minus_A <- matrixI - A_prov
 Leontief_Inverse <- solve(I_minus_A)
+
+
+# # 1. Gunakan TOTAL OUTPUT (X700) sebagai pembagi matriks A, bukan total input
+# X_prov <- as.numeric(io[1:jml_sektor, kolom_TOutput]) # Mengambil kolom X700 = total output
+# X_prov[is.na(X_prov) | is.nan(X_prov)] <- 0
+# 
+# # 2. Matriks Koefisien Teknis A_prov (Z / Total Output)
+# A_prov <- matrix(0, nrow = jml_sektor, ncol = jml_sektor)
+# 
+# for (j in 1:jml_sektor) {
+#   if (X_prov[j] > 0) {
+#     A_prov[, j] <- Z_prov[, j] / X_prov[j]
+#   } else {
+#     A_prov[, j] <- 0
+#   }
+# }
+# 
+# # Pengaman jika ada nilai tak terhingga / NaN
+# A_prov[is.na(A_prov) | is.nan(A_prov) | is.infinite(A_prov)] <- 0
+# 
+# # 3. Hitung Invers Leontief (I - A)^-1
+# nA_prov <- nrow(A_prov)
+# matrixI <- diag(nA_prov)
+# I_minus_A <- matrixI - A_prov
+# 
+# Leontief_Inverse <- solve(I_minus_A)
+# Leontief_Inverse[is.na(Leontief_Inverse) | is.infinite(Leontief_Inverse)] <- 0
 
 #kolom final demand
 fd <- io[1:jml_sektor,kolom_FD]
@@ -204,36 +231,6 @@ Constrained <- as.matrix(DeskripsiSektor[, 5])
 
 
 ```{r, echo = FALSE, warning=FALSE}
-# ==============================================================================
-# PERBAIKAN TOTAL: LINKAGE ANALYSIS (MENGGUNAKAN TOTAL OUTPUT X700)
-# ==============================================================================
-
-# 1. Gunakan TOTAL OUTPUT (X700) sebagai pembagi matriks A, bukan total input
-X_prov <- as.numeric(io[1:jml_sektor, kolom_TOutput]) # Mengambil kolom X700
-X_prov[is.na(X_prov) | is.nan(X_prov)] <- 0
-
-# 2. Matriks Koefisien Teknis A_prov (Z / Total Output)
-A_prov <- matrix(0, nrow = jml_sektor, ncol = jml_sektor)
-
-for (j in 1:jml_sektor) {
-  if (X_prov[j] > 0) {
-    A_prov[, j] <- Z_prov[, j] / X_prov[j]
-  } else {
-    A_prov[, j] <- 0
-  }
-}
-
-# Pengaman jika ada nilai tak terhingga / NaN
-A_prov[is.na(A_prov) | is.nan(A_prov) | is.infinite(A_prov)] <- 0
-
-# 3. Hitung Invers Leontief (I - A)^-1
-nA_prov <- nrow(A_prov)
-matrixI <- diag(nA_prov)
-I_minus_A <- matrixI - A_prov
-
-Leontief_Inverse <- solve(I_minus_A)
-Leontief_Inverse[is.na(Leontief_Inverse) | is.infinite(Leontief_Inverse)] <- 0
-
 # ------------------------------------------------------------------------------
 # PERHITUNGAN LINKAGE INDEX
 # ------------------------------------------------------------------------------
@@ -823,6 +820,162 @@ knitr::kable(
   kableExtra::row_spec(4, bold = TRUE, background = "#EAEAEA")
 ```
 
+
+
+## Income
+```{r, echo = FALSE, warning=FALSE}
+# ==============================================================================
+# 1. HOUSEHOLD INCOME PROJECTION (2023–2050)
+# ==============================================================================
+# Proyeksi pendapatan dihitung menggunakan proporsi kompensasi tenaga kerja (Labor Compensation) terhadap total GRP basis 2023.
+
+
+# Calculate Household Income Proportion from 2023 IO Data
+upah_gaji_png <- as.numeric(io[baris_upah, kolom_Sektor])
+upah_gaji_png[is.na(upah_gaji_png)] <- 0
+prop_income_png <- sum(upah_gaji_png) / sum(pdrb_IO)
+
+# Income Projection Matrix (Million PGK)
+income_BAU_png <- plot_df$pdrb_BAU * prop_income_png
+
+df_income_projection <- data.frame(
+  Year = plot_df$Year,
+  Total_GRP_PGK_M = round(plot_df$pdrb_BAU, 2),
+  Household_Income_PGK_M = round(income_BAU_png, 2)
+)
+
+# Export Income Projection to Excel
+write_xlsx(df_income_projection, "Income_Projection_BAU_Oro_2023_2050.xlsx")
+
+# Line Chart Household Income
+p_income_proj <- ggplot(df_income_projection, aes(x = Year, y = Household_Income_PGK_M)) +
+  geom_line(color = "#2E7D32", linewidth = 1.2) +
+  geom_point(color = "#2E7D32", size = 2.5) +
+  scale_x_continuous(breaks = seq(tahunAwal, tahunAkhir, by = 5)) +
+  scale_y_continuous(labels = comma_format()) +
+  labs(
+    title = sprintf("Household Income Projection for Oro Province (%d–%d)", tahunAwal, tahunAkhir),
+    x = "Year",
+    y = "Total Income (Million PGK)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.minor = element_blank()
+  )
+
+print(p_income_proj)
+
+```
+
+
+
+
+## Intersectoral Land Linkages
+
+```{r, echo = FALSE, warning=FALSE}
+# ==============================================================================
+# 3. INTERSECTORAL LAND LINKAGES ANALYSIS
+# ==============================================================================
+# Mengukur rata-rata Indeks Total Forward Linkage (ITFL / Sensitivity Index) khusus untuk sektor-sektor constrained (sektor berbasis lahan/SDA) untuk melihat sejauh mana sektor lahan bertindak sebagai pemasok input bagi seluruh struktur ekonomi regional.
+
+
+# Extract Constrained Sector Tagging Vector (1 = Land-based, 0 = Non-land)
+v_constrained_png <- as.numeric(DeskripsiSektor$Constrained)
+v_constrained_png[is.na(v_constrained_png)] <- 0
+
+# Calculate Constrained Land-based Sectors ITFL Average
+itfl_land_sectors <- tabel_multiplier_sektoral$ITFL * v_constrained_png
+mean_itfl_land_bau <- mean(itfl_land_sectors[v_constrained_png == 1], na.rm = TRUE)
+
+df_land_linkages_summary <- data.frame(
+  Indicator = c(
+    "Total Land-Based Sectors",
+    "Average Total Forward Linkage (ITFL) - Land Sectors",
+    "Linkage Status / Role in Regional Supply Chain"
+  ),
+  Value = c(
+    as.character(sum(v_constrained_png)),
+    sprintf("%.4f", mean_itfl_land_bau),
+    ifelse(mean_itfl_land_bau > 1, "Strong Forward Supply Driver", "Primary Material Supplier / Moderate Linkage")
+  )
+)
+
+# Export Summary to Excel
+write_xlsx(df_land_linkages_summary, "Land_Linkages_Summary_Oro_2023.xlsx")
+
+# Display Summary Table in HTML Output
+knitr::kable(
+  df_land_linkages_summary,
+  row.names = FALSE,
+  caption = "Intersectoral Land Linkages Analysis for Oro Province (2023 Baseline)",
+  col.names = c("Parameter", "Value"),
+  align = c("l", "r")
+) %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center"
+  )
+
+```
+
+
+
+## Employment Absorption
+
+
+```{r, echo = FALSE, warning=FALSE}
+# ==============================================================================
+# 2. EMPLOYMENT ABSORPTION PROJECTION (2023–2050)
+# ==============================================================================
+# Proyeksi serapan tenaga kerja dihitung dari penambahan tenaga kerja tahunan berdasarkan selisih pertumbuhan GRP yang dikalikan dengan Average Labor Multiplier basis 2023.
+
+# Average Labor Multiplier (Person per Million PGK)
+mean_lab_multiplier_png <- mean(tabel_multiplier_sektoral$Labour_Effect, na.rm = TRUE)
+
+# Baseline Labor 2023
+TK_baseline_2023 <- sum(DeskripsiSektor$TenagaKerja, na.rm = TRUE)
+
+# Calculate Annual GRP Differences
+grp_diff <- c(0, diff(plot_df$pdrb_BAU))
+
+# Calculate Additional Jobs per Year and Accumulate
+additional_jobs <- grp_diff * mean_lab_multiplier_png
+employment_proj <- TK_baseline_2023 + cumsum(additional_jobs)
+
+df_employment_projection <- data.frame(
+  Year = plot_df$Year,
+  Total_GRP_PGK_M = round(plot_df$pdrb_BAU, 2),
+  Annual_GRP_Diff = round(grp_diff, 2),
+  Projected_Employment_Persons = round(employment_proj, 0)
+)
+
+# Export Employment Projection to Excel
+write_xlsx(df_employment_projection, "Employment_Projection_BAU_Oro_2023_2050.xlsx")
+
+# Line Chart Employment Absorption
+p_employment_proj <- ggplot(df_employment_projection, aes(x = Year, y = Projected_Employment_Persons)) +
+  geom_line(color = "#1565C0", linewidth = 1.2) +
+  geom_point(color = "#1565C0", size = 2.5) +
+  scale_x_continuous(breaks = seq(tahunAwal, tahunAkhir, by = 5)) +
+  scale_y_continuous(labels = comma_format()) +
+  labs(
+    title = sprintf("Employment Absorption Projection for Oro Province (%d–%d)", tahunAwal, tahunAkhir),
+    x = "Year",
+    y = "Total Jobs (Persons)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.minor = element_blank()
+  )
+
+print(p_employment_proj)
+
+
+```
+
 ## Gross Regional Product (GRP) 2019 and 2023
 
 ```{r, echo = FALSE, warning=FALSE}
@@ -1157,7 +1310,7 @@ print(p_bar_growth_bau)
 
 ```
 
-## Income
+## Income*
 ```{r, echo = FALSE, warning=FALSE}
 # ==============================================================================
 # 1. HOUSEHOLD INCOME PROJECTION (2023–2050)
@@ -1206,7 +1359,7 @@ print(p_income_proj)
 
 
 
-## Intersectoral Land Linkages
+## Intersectoral Land Linkages*
 
 ```{r, echo = FALSE, warning=FALSE}
 # ==============================================================================
@@ -1257,7 +1410,7 @@ knitr::kable(
 
 
 
-## Employment Absorption
+## Employment Absorption*
 
 
 ```{r, echo = FALSE, warning=FALSE}
